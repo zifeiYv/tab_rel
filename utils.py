@@ -18,7 +18,10 @@ import os
 import time
 import pandas as pd
 import uuid
-import psycopg2
+try:
+    import psycopg2
+except ModuleNotFoundError:
+    pass
 import shutil
 
 os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
