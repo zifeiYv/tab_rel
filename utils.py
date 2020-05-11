@@ -879,6 +879,6 @@ def del_cache_file(post_json):
         if os.path.isdir(db_info_path):
             shutil.rmtree(db_info_path)
     except Exception as e:
-        logging.error(e)
+        print(e)
         return "0"
     return "1"
