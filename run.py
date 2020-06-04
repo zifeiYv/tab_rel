@@ -30,19 +30,29 @@ def find_relation():
     """
     The format of valid parameter posted by user is as follows:
         {
-            "modelId1": "<model-id>",
-            "modelId2": "<another-model-id>",
-            "algorithmName": "<just-receive-it-and-write-into-database>",
-            "executObj": "<just-receive-it-and-write-into-database>",
+            "algorithmName": "表关系分析算法",
             "configMap": {
-                "host": "127.0.0.1",
+                "db": "dmm_test",
+                "host": "191.168.6.103",
+                "password": "merit",
                 "port": 3306,
-                "user": "root",
-                "password": "<some-passwd>"
-                "db": "db"
-            }
+                "user": "root"
+            },
+            "dbInfo": {
+                "config": {
+                    "config": "dmm_test",
+                    "host": "191.168.6.103",
+                    "password": "merit",
+                    "port": 3306,
+                    "user": "root"
+                },
+                "type": "mysql"
+            },
+            "notifyUrl":"http://1121",
+            "executObj": "local_db v1版本",
+            "modelId": "92ae9b17770041ae85e563cf95c9cf56"
         }
-    
+            
     `algorithmName` and `executObj` are NOT used by this program and just stored into specific position.
     `configMap` includes the key information to connect config database.
     """

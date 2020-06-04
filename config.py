@@ -35,7 +35,3 @@ multi_process = 0
 
 # Redis config, used to show progress.
 redis_config = {'host': 'localhost', 'port': 6379, }
-
-# Request url when calculation finished.
-# finish_url = 'http://127.0.0.1:5002/finish_rela_calculation/'
-finish_url = 'http://127.0.0.1:5002/all_tables_relation/get_progress/'

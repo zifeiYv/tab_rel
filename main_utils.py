@@ -17,7 +17,7 @@ import pickle
 import pandas as pd
 from pybloom import BloomFilter
 from config import both_roles, not_cite_table, not_base_table, sup_out_foreign_key, \
-    multi_process, redis_config, finish_url
+    multi_process, redis_config
 if multi_process:
     from faster import add_operation
 
@@ -57,11 +57,11 @@ def main_process(post_json):
     r.set('msg', '')  # Additional message
     r.set('state', 0)  # Calculation state, 0 means calculating, 1 means finished(or some errors occur)
     # Check if the parameters is valid.
-    if isinstance(check_parameters(post_json), str):
-        r.set('progress', 0)
-        r.set('state', 1)
-        r.set('msg', check_parameters(post_json))
-        return {'state': 0, 'msg': check_parameters(post_json)}
+    # if isinstance(check_parameters(post_json), str):
+    #     r.set('progress', 0)
+    #     r.set('state', 1)
+    #     r.set('msg', check_parameters(post_json))
+    #     return {'state': 0, 'msg': check_parameters(post_json)}
     # Check if the config database is connectable.
     config_map = post_json['configMap']
     conn = check_connection(config_map)
@@ -72,18 +72,15 @@ def main_process(post_json):
         r.set('msg', msg)
         return {'state': 0, 'msg': msg}
     # Get all parameters and initialize a log object.
-    model_id1 = post_json['modelId1']
-    model_id2 = post_json['modelId2']
-    model_id = (model_id1 + model_id2) if model_id1 < model_id2 else (model_id2 + model_id1)
+    model_id = post_json['modelId']
     alg_name = post_json['algorithmName']
     exe_obj = post_json['executObj']
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    logging = gen_logger(model_id1+'-'+model_id2)
+    logging = gen_logger(model_id)
     logging.info(f'{"*"*80}')
     logging.info('All parameters required are satisfied and starting calculation'.upper())
     logging.info(f'{"*"*80}')
-    logging.info(f'model 1: {model_id1}')
-    logging.info(f'model 2: {model_id2}')
+    logging.info(f'model ID : {model_id}')
     if multi_process:
         logging.warning('Multi process mode')
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -102,12 +99,12 @@ def main_process(post_json):
     logging.info('Initializing the analysis status table...')
     r.set('progress', 30)
 
-    sql = f'REPLACE INTO pf_analysis_status (linkageid, analysisstatus, algorithmname, executobj,' \
+    sql = f'REPLACE INTO analysis_status (id, analysis_status, algorithm_name, execute_obj,' \
           f'start_time) values("{model_id}", "1", "{alg_name}", "{exe_obj}", "{start_time}")'
     try:
         with conn.cursor() as cr:
             # Cache the status of model for rollback when needed
-            cr.execute(f'select t.analysisstatus from analysis_status t where t.linkageid={model_id}')
+            cr.execute(f"select t.analysis_status from analysis_status t where t.id='{model_id}'")
             res = cr.fetchone()
             if not res:
                 status_bak = False
@@ -195,14 +192,14 @@ def main_process(post_json):
         try:
             logging.info('Caching last computation results and deleting non-tagged results...')
             with conn.cursor() as cr:
-                cr.execute(f'select db1, table1, column1, db2, table2, column2 from pf_analysis_result1 where '
+                cr.execute(f'select db1, table1, column1, db2, table2, column2 from analysis_results where '
                            f'model="{model_id}"')
                 res = cr.fetchall()
                 for r_ in res:
                     last_rel_res.append("".join(r_))
-                cr.execute(f'delete from pf_analysis_result1 where model="{model_id}" and `scantype`="0"')
-                cr.execute(f'select db1, table1, column1, db2, table2, column2 from pf_analysis_result1 where'
-                           f'model="{model_id}" and `scantype` != "0"')
+                cr.execute(f'delete from analysis_results where model="{model_id}" and `scantype`=0')
+                cr.execute(f'select db1, table1, column1, db2, table2, column2 from analysis_results where '
+                           f'model="{model_id}" and `scantype` != 0')
                 res = cr.fetchall()
                 for r_ in res:
                     user_rel_res.append("".join(r_))
@@ -220,52 +217,43 @@ def main_process(post_json):
     #   After initialization, program will get data source information through model id and connect data source
     # to get data. The source tables can come from both one single database or two different databases.
     #
-    if model_id1 == model_id2:  # In this branch, all tables come from one single database.
-        r.set('stage', '计算关系1/3')
-        r.set('progress', 0)
-        logging.info('All tables come from one single database.')
-        with conn.cursor() as cr:
-            cr.execute(f'select datasource_id from pf_businessmodel_model t where t.id="{model_id1}"')
-            ds = cr.fetchone()[0]
-            data_source = {}
-            cr.execute(f'select type, host, port, user_name, password, sid, schema_name, from pf_datasource t where '
-                       f't.id="{ds}"')
-            res = cr.fetchone()
-            data_source['model_id'] = model_id1
-            data_source['db_type'] = res[0]
-            data_source['tables'] = tables1
-            data_source['config'] = {
-                'host': res[1],
-                'port': int(res[2]),
-                'user': res[3],
-                'password': res[4],
-                'db': res[5],
-                'pattern': res[6]
-            }
-            output = one_db(data_source, logging, custom_para, user_rel_res)
-            if not output:
-                r.set('state', 1)
-                r.set('msg', 'Empty output')
-                logging.info('Empty output')
-                roll_back(status_bak, conn, model_id)
-                return
-            r.set('stage', '结果入库')
-            r.set('progress', 0)
-            num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
-            num_rel = len(output)
-            r.set('progress', 100)
+    # In this branch, all tables come from one single database.
+    r.set('stage', '计算关系1/3')
+    r.set('progress', 0)
+    logging.info('All tables come from one single database.')
+    data_source = post_json['dbInfo']
+    data_source['model_id'] = model_id
+    data_source['tables'] = tables1
+
+    finish_url = post_json['notifyUrl']
+    finish_url += f'?modelId={model_id}'
+
+    output = one_db(data_source, logging, custom_para, user_rel_res)
+    print(output)
+    if output.empty:
+        r.set('state', 1)
+        r.set('msg', 'Empty output')
+        logging.info('Empty output')
+        roll_back(status_bak, conn, model_id)
+        requests.get(finish_url)
+        logging.info(f'calculation complete.')
+    r.set('stage', '结果入库')
+    r.set('progress', 0)
+    num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
+    num_rel = len(output)
+    r.set('progress', 100)
 
     end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    sql = f'update pf_analysis_status set analysisstatus="2", relationnum={num_rel}, new_relation_num={num_new_rel},' \
-          f'end_time="{end_time}" where linkageid="{model_id}"'
+    sql = f'update analysis_status set analysis_status="2", relation_num={num_rel}, new_relation_num={num_new_rel},' \
+          f'end_time="{end_time}" where id="{model_id}"'
     with conn.cursor() as cr:
         cr.execute(sql)
         conn.commit()
     conn.close()
     r.set('state', 1)
     r.set('msg', 'Complete')
-    logging.info(f'calculation complete.')
     requests.get(finish_url)
+    logging.info(f'calculation complete.')
 
 
 def one_db(data_source, logging, custom_para, user_rel_res):
@@ -332,48 +320,60 @@ def one_db(data_source, logging, custom_para, user_rel_res):
             continue
         if length[tab] < inf_tab_len:  # Table is too long
             continue
-        for col in cols[tab]:
+        if not cols.get(tab):
+            continue
+        for col in cols.get(tab):
             try:
-                value = pd.read_sql(sql6 % (tab, col), conn, coerce_float=False)
+                value = pd.read_sql(sql6 % (col, tab), conn, coerce_float=False)
                 all_num = value.shape[0]
             except Exception as e:
                 logging.exception(e)
                 continue
-            if not col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio)):
-                continue
-            for pk_name in pks:
-                if pk_name in not_base_table_list:
+            try:
+                df = col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio))
+                if isinstance(df, pd.DataFrame) and df.empty:
                     continue
-                if length[pk_name] < inf_tab_len:
+                if df is None:
                     continue
-                if pk_name == tab:
-                    continue
-                for pk_col in pks[pk_name]:
-                    if "".join((path, pk_name, pk_col, path, tab, col)) in user_rel_res:
-                        # skip the results edited by users.
+                for pk_name in pks:
+                    if pk_name in not_base_table_list:
                         continue
-                    with open(f'./filters/{path}/{pk_name}@{pk_col}.filter', 'rb') as f:
-                        bf = pickle.load(f)
-                    flag = 1
-                    num_not_in_bf = 0
-                    for k in value[col]:
-                        if k not in bf:
-                            num_not_in_bf += 1
-                        if num_not_in_bf / all_num > sup_out_foreign_key:
-                            flag = 0
-                            break
-                    if flag:  # `flag` equals `0` means these two columns has no relationship.
-                        not_match_ratio = num_not_in_bf / all_num
-                        res = [data_source['model_id'], path, pk_name, 'table-comment', pk_col, 'column-comment',
-                               data_source['model_id'], path, tab, 'table-comment', col, 'column-comment',
-                               not_match_ratio]
-                        results.append(res)
+                    if length[pk_name] < inf_tab_len:
+                        continue
+                    if pk_name == tab:
+                        continue
+                    for pk_col in pks[pk_name]:
+                        if "".join((path, pk_name, pk_col, path, tab, col)) in user_rel_res:
+                            # skip the results edited by users.
+                            continue
+                        with open(f'./filters/{path}/{pk_name}@{pk_col}.filter', 'rb') as f:
+                            bf = pickle.load(f)
+                        flag = 1
+                        num_not_in_bf = 0
+                        for k in value[col]:
+                            if k not in bf:
+                                num_not_in_bf += 1
+                            if num_not_in_bf / all_num > sup_out_foreign_key:
+                                flag = 0
+                                break
+                        if flag:  # `flag` equals `0` means these two columns has no relationship.
+                            not_match_ratio = num_not_in_bf / all_num
+                            res = [data_source['model_id'], path, pk_name, 'table-comment', pk_col, 'column-comment',
+                                data_source['model_id'], path, tab, 'table-comment', col, 'column-comment',
+                                not_match_ratio]
+                            results.append(res)
+            except Exception as e:
+                print(e)
+
     output = pd.DataFrame(columns=['model1', 'db1', 'table1', 'table1comment', 'column1', 'column1comment',
                                    'model2', 'db2', 'table2', 'table2comment', 'column2', 'column2comment',
                                    'matching_degree'],
                           index=range(len(results)))
-    for i in range(len(results)):
-        output.iloc[i] = results[i]
+    if results:
+        for i in range(len(results)):
+            output.iloc[i] = results[i]
+    else:
+        return pd.DataFrame()
     return output
 
 
@@ -390,7 +390,7 @@ def connect(data_source, logging):
         Connection objects and some useful sql.
     """
     # MySQL and Gbase databases share the same module.
-    if data_source['db_type'].upper() in ('MYSQL', 'GBASE'):
+    if data_source['type'].upper() in ('MYSQL', 'GBASE'):
         logging.info(f'A MySQL/Gbase data source found.')
         config = data_source['config']
         if 'pattern' in config.keys():
@@ -404,13 +404,13 @@ def connect(data_source, logging):
                f'and table_type="BASE TABLE"'
         sql2 = f'select column_name, data_type from information_schema.columns where table_schema="{db}" ' \
                f'and table_name="%s"'
-        sql3 = f'select count(`%s`) from "{db}".`%s`'
+        sql3 = f'select count(`%s`) from {db}.`%s`'
         sql4 = f'select count(distinct `%s`) from {db}.%s'
         sql5 = f'select `%s` from {db}.`%s`'
         sql6 = f'select `%s` from {db}.`%s` limit 1000'
         sql7 = f'select count(1) from {db}.`%s`'
         sql8 = f'select count(*) from {db}.`%s` where length(`%s`)=char_length(`%s`)'
-    elif data_source['db_type'].upper() == 'ORACLE':
+    elif data_source['type'].upper() == 'ORACLE':
         logging.info('An Oracle data source found.')
         import cx_Oracle
         config = data_source['config']
@@ -431,7 +431,7 @@ def connect(data_source, logging):
         sql6 = f'select "%s" from {db}."%s" where rownum <= 1000'
         sql7 = f'select count(1) from {db}."%s"'
         sql8 = f'select count(1) from {db}."%s" where length("%s") = lengthb("%s")'
-    elif data_source['db_type'].upper() == 'POSTGRESQL':
+    elif data_source['type'].upper() == 'POSTGRESQL':
         logging.info('A PostgreSQL data source found.')
         import psycopg2
         config = data_source['config']

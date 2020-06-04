@@ -144,9 +144,9 @@ def gen_logger(log_file_name, console_print=True):
     if not logger.handlers:
         console = StreamHandler()
         handler = RotatingFileHandler(log_file_name, maxBytes=5*1024*1024, backupCount=5)
-        # formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s | <'
-        #                               '%(filename)s %(funcName)s line %(lineno)d>', datefmt='%Y-%m-%d %H:%M:%S')
-        formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s ', datefmt='%Y-%m-%d %H:%M:%S')
+        formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s | <'
+                                      '%(filename)s %(funcName)s line %(lineno)d>', datefmt='%Y-%m-%d %H:%M:%S')
+        # formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s ', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
         console.setFormatter(formatter)
         logger.addHandler(handler)
@@ -274,13 +274,12 @@ def res_to_db(output, config, last_rel_res, log):
     for i in range(output.shape[0]):
         _id = str(uuid.uuid1()).replace('-', '')
         line = output.iloc[i]
-        model1 = line['model1']
+        model_id = line['model1']
         db1 = line['db1']
         table1 = line['table1']
         table1comment = line['table1comment'].replace("\'", "\\'").replace("\"", "\\")
         column1 = line['column1']
         column1comment = line['column1comment'].replace("\'", "\\'").replace("\"", "\\")
-        model2 = line['model2']
         db2 = line['db2']
         table2 = line['table2']
         table2comment = line['table2comment'].replace("\'", "\\'").replace("\"", "\\")
@@ -292,13 +291,12 @@ def res_to_db(output, config, last_rel_res, log):
         else:
             status = 1
             num_new_rel += 1
-        model_id = (model1 + model2) if model1 < model2 else (model2 + model1)
         insert_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-        sql = f'insert into pf_analysis_result1(`id`, `model`, `model1`, `db1`, `table1`, `table1_comment`, ' \
-              f'`column1`, `column1_comment`, `model2`, `db2`, `table2`, `table2_comment`, `column2`, ' \
+        sql = f'insert into analysis_results(`id`, `model`, `db1`, `table1`, `table1_comment`, ' \
+              f'`column1`, `column1_comment`, `db2`, `table2`, `table2_comment`, `column2`, ' \
               f'`column2_comment`, `status`, `scantype`,`create_time`,`edit_time`, `matching_degree`) values (' \
               f'"{_id}", "{model_id}", "{db1}", "{table1}", "{table1comment}", "{column1}", "{column1comment}", ' \
-              f'"{model2}", "{db2}", "{table2}","{table2comment}", "{column2}","{column2comment}","{status}", "0", ' \
+              f' "{db2}", "{table2}","{table2comment}", "{column2}","{column2comment}","{status}", "0", ' \
               f'"{insert_time}", "{insert_time}", "{not_match_ratio}")'
         try:
             cr.execute(sql)
@@ -312,7 +310,7 @@ def res_to_db(output, config, last_rel_res, log):
 
 
 def roll_back(status_bak, conn, model_id):
-    """This roll back operation is designed for table 'pf_analysis_status' to make sure the 'analysisstatus' field back
+    """This roll back operation is designed for table 'analysis_status' to make sure the 'analysisstatus' field back
      to its original value if some errors occur in computation.
 
     Args:
@@ -324,9 +322,9 @@ def roll_back(status_bak, conn, model_id):
     """
     with conn.cursor() as cr:
         if not status_bak:  # A first-computation model and delete its record directly.
-            cr.execute(f'delete from pf_analysis_status where linkageid="{model_id}"')
+            cr.execute(f'delete from analysis_status where id="{model_id}"')
         else:  # A re-computation model.
-            cr.execute(f'update pf_analysis_status set analysisstatus="{status_bak}" where linkageid="{model_id}"')
+            cr.execute(f'update analysis_status set analysis_status="{status_bak}" where id="{model_id}"')
         conn.commit()
 
 
