@@ -17,7 +17,7 @@ import pickle
 import pandas as pd
 from pybloom import BloomFilter
 from config import both_roles, not_cite_table, not_base_table, sup_out_foreign_key, \
-    multi_process, redis_config
+    multi_process, redis_config, mysql_type_list, oracle_type_list, pg_type_list
 if multi_process:
     from faster import add_operation
 
@@ -229,7 +229,6 @@ def main_process(post_json):
     finish_url += f'?modelId={model_id}'
 
     output = one_db(data_source, logging, custom_para, user_rel_res)
-    print(output)
     if output.empty:
         r.set('state', 1)
         r.set('msg', 'Empty output')
@@ -398,7 +397,7 @@ def connect(data_source, logging):
         conn = pymysql.connect(**config, charset='utf8')
         cr = conn.cursor()
         # A column will be calculated only when its data type in `dtype_list`
-        dtype_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT']
+        dtype_list = mysql_type_list
         db = config['db']
         sql1 = f'select `table_name` from information_schema.tables where table_schema="{db}" ' \
                f'and table_type="BASE TABLE"'
@@ -418,7 +417,7 @@ def connect(data_source, logging):
         conn = cx_Oracle.connect(config['user'], config['password'], url)
         cr = conn.cursor()
         # A column will be calculated only when its data type in `dtype_list`
-        dtype_list = ['VARCHAR2', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR2']
+        dtype_list = oracle_type_list
         db = config['user']
         pattern = config['pattern']
         if len(pattern) != 0:
@@ -436,7 +435,7 @@ def connect(data_source, logging):
         import psycopg2
         config = data_source['config']
         # A column will be calculated only when its data type in `dtype_list`
-        dtype_list = ['CHARACTER', 'TEXT']
+        dtype_list = pg_type_list
         conn = psycopg2.connect(host=config['host'], port=config['port'], user=config['user'],
                                 password=config['password'], database=config['db'])
         db = config['db']

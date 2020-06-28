@@ -35,3 +35,8 @@ multi_process = 0
 
 # Redis config, used to show progress.
 redis_config = {'host': 'localhost', 'port': 6379, }
+
+# Data type list, which contains fields could be extracted
+mysql_type_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT']  # mysql and gbase are the same
+oracle_type_list = ['VARCHAR2', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR2']
+pg_type_list = ['CHARACTER', 'TEXT']
