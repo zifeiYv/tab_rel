@@ -20,6 +20,8 @@ lib64/
 parts/
 sdist/
 var/
+filters/
+table_attr/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/

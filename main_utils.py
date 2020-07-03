@@ -15,9 +15,11 @@ import requests
 import redis
 import pickle
 import pandas as pd
+# noinspection PyPackageRequirements
 from pybloom import BloomFilter
 from config import both_roles, not_cite_table, not_base_table, sup_out_foreign_key, \
     multi_process, redis_config, mysql_type_list, oracle_type_list, pg_type_list
+
 if multi_process:
     from faster import add_operation
 
@@ -77,9 +79,9 @@ def main_process(post_json):
     exe_obj = post_json['executObj']
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     logging = gen_logger(model_id)
-    logging.info(f'{"*"*80}')
+    logging.info(f'{"*" * 80}')
     logging.info('All parameters required are satisfied and starting calculation'.upper())
-    logging.info(f'{"*"*80}')
+    logging.info(f'{"*" * 80}')
     logging.info(f'model ID : {model_id}')
     if multi_process:
         logging.warning('Multi process mode')
@@ -312,9 +314,9 @@ def one_db(data_source, logging, custom_para, user_rel_res):
     logging.info('Computing table relations...')
     results = []
     for i in range(len(ori_tabs)):
-        r.set('progress', 100*i/len(ori_tabs))
+        r.set('progress', 100 * i / len(ori_tabs))
         tab = ori_tabs[i]
-        logging.info(f'{i+1:4}/{len(ori_tabs)}:Computing `{tab}`...')
+        logging.info(f'{i + 1:4}/{len(ori_tabs)}:Computing `{tab}`...')
         if tab in not_cite_table_list:  # Not allowed to have foreign keys
             continue
         if length[tab] < inf_tab_len:  # Table is too long
@@ -358,8 +360,8 @@ def one_db(data_source, logging, custom_para, user_rel_res):
                         if flag:  # `flag` equals `0` means these two columns has no relationship.
                             not_match_ratio = num_not_in_bf / all_num
                             res = [data_source['model_id'], path, pk_name, 'table-comment', pk_col, 'column-comment',
-                                data_source['model_id'], path, tab, 'table-comment', col, 'column-comment',
-                                not_match_ratio]
+                                   data_source['model_id'], path, tab, 'table-comment', col, 'column-comment',
+                                   not_match_ratio]
                             results.append(res)
             except Exception as e:
                 print(e)
@@ -538,8 +540,8 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
     for i in range(len(tabs)):
         start_time = time.clock()
         tab = tabs[i]
-        logging.info(f'{i+1}/{len(tabs)}: `{tab}` starting...')
-        r.set('progress', 100*(i+1)/len(tabs))
+        logging.info(f'{i + 1}/{len(tabs)}: `{tab}` starting...')
+        r.set('progress', 100 * (i + 1) / len(tabs))
         try:
             cr.execute(sql7 % tab)
         except Exception as e:
@@ -603,17 +605,17 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
                     pos_cols.append(col_name)
             if len(pos_pks):
                 pks[tab] = pos_pks
-                logging.info(f'{" " * 6} # of possible primary keys of table `{tab}`:{len(pos_pks)}')
+                logging.info(f'{" " * 6}Num of possible primary keys of table `{tab}`:{len(pos_pks)}')
             else:
                 no_pks.append(tab)
-                logging.info(f'{" " * 6} `{tab}` has no possible primary keys.')
+                logging.info(f'{" " * 6}`{tab}` has no possible primary keys.')
             cols[tab] = pos_cols
             if len(pos_cols):
-                logging.info(f'{" " * 6} # of possible foreign keys of table `{tab}`:{len(pos_cols)}')
+                logging.info(f'{" " * 6}Num of possible foreign keys of table `{tab}`:{len(pos_cols)}')
             else:
-                logging.info(f'{" " * 6} `{tab}` has no possible foreign keys.')
+                logging.info(f'{" " * 6}`{tab}` has no possible foreign keys.')
             run_time = time.clock() - start_time
-            logging.info(f"`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
+            logging.info(f"{' ' * 6}`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
                          f"run time:{run_time:.3f}")
     return cols, length, length_long, length_zero, no_pks, pks, no_exist
 
@@ -652,16 +654,16 @@ def gen_bloom_filter(pks, length, path, conn, logging, sql5):
         capacity = length[tab] * 2  # The capacity of a filter file.
         cols = pks[tab]
         for k in range(len(cols)):
-            r.set('progress', 100*n/total_num)
+            r.set('progress', 100 * n / total_num)
             t_s = time.time()
             col = cols[k]
             logging.info(f'{n:4}/{total_num:4}:Computing {tab}.{col}, {length[tab]} rows in total.')
             if tab + '@' + col in filters:
-                logging.info(f'{tab}.{col} already exists, continue.')
+                logging.info(f'{" " * 9}{tab}.{col} already exists, continue.')
                 n += 1
                 continue
             value = pd.read_sql(sql5 % (col, tab), conn, coerce_float=False)
-            if multi_process:
+            if multi_process and length[tab] > 1e6:
                 bf = add_operation(value, capacity)
             else:
                 bf = BloomFilter(capacity)
@@ -671,7 +673,7 @@ def gen_bloom_filter(pks, length, path, conn, logging, sql5):
                 pickle.dump(bf, f)
             filters[tab + '@' + col] = capacity
             t_e = time.time()
-            logging.info(f'{tab}.{col} finished, cost {t_e-t_s:.2f}s')
+            logging.info(f'{" " * 9}{tab}.{col} finished, cost {t_e - t_s:.2f}s')
             n += 1
     with open(f'./filters/{path}/filters.json', 'w') as f:
         json.dump(filters, f)

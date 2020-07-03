@@ -144,8 +144,8 @@ def gen_logger(log_file_name, console_print=True):
     if not logger.handlers:
         console = StreamHandler()
         handler = RotatingFileHandler(log_file_name, maxBytes=5*1024*1024, backupCount=5)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s | <'
-                                      '%(filename)s %(funcName)s line %(lineno)d>', datefmt='%Y-%m-%d %H:%M:%S')
+        formatter = logging.Formatter('%(asctime)s %(levelname)7s %(filename)8s line %(lineno)4d | %(message)s ',
+                                      datefmt='%Y-%m-%d %H:%M:%S')
         # formatter = logging.Formatter('%(asctime)s %(levelname)s | %(message)s ', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
         console.setFormatter(formatter)

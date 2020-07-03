@@ -31,16 +31,16 @@ def find_relation():
     The format of valid parameter posted by user is as follows:
         {
             "algorithmName": "表关系分析算法",
-            "configMap": {
+            "configMap": {  # 配置数据库的信息
                 "db": "dmm_test",
                 "host": "191.168.6.103",
                 "password": "merit",
                 "port": 3306,
                 "user": "root"
             },
-            "dbInfo": {
+            "dbInfo": {  # 数据源的信息
                 "config": {
-                    "config": "dmm_test",
+                    "db": "dmm_test",
                     "host": "191.168.6.103",
                     "password": "merit",
                     "port": 3306,
@@ -56,7 +56,8 @@ def find_relation():
     `algorithmName` and `executObj` are NOT used by this program and just stored into specific position.
     `configMap` includes the key information to connect config database.
     """
-    executor.submit(main_process, post_json)
+    # executor.submit(main_process, post_json)
+    main_process(post_json)
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
 
 
@@ -79,6 +80,12 @@ def update_parameter():
     if not result:
         return jsonify({'state': 0, 'msg': "清理缓存失败！"})
     return jsonify({'msg': 'Analyze completed'})
+
+
+@app.route(url + 'finish/')
+def func():
+    model_id = request.args.get('model_id')
+    return f"Finish {model_id}"
 
 
 if __name__ == '__main__':
