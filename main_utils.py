@@ -145,7 +145,7 @@ def main_process(post_json):
     r.set('msg', '')  # Additional message
     logging.info('Getting custom parameters from user config table...')
     sql = f'select t.csl, t.ds, t.idr, t.isl, t.itl, t.tables1, t.tables2 from ' \
-          f'pf_user_config t where t.model="{model_id}"'
+          f'pf_user_config t where t.model="{model_id}{model_id}"'
     try:
         with conn.cursor() as cr:
             if cr.execute(sql):
@@ -319,7 +319,7 @@ def one_db(data_source, logging, custom_para, user_rel_res):
         logging.info(f'{i + 1:4}/{len(ori_tabs)}:Computing `{tab}`...')
         if tab in not_cite_table_list:  # Not allowed to have foreign keys
             continue
-        if length[tab] < inf_tab_len:  # Table is too long
+        if length[tab] < inf_tab_len:  # Table is too short
             continue
         if not cols.get(tab):
             continue
@@ -401,10 +401,10 @@ def connect(data_source, logging):
         # A column will be calculated only when its data type in `dtype_list`
         dtype_list = mysql_type_list
         db = config['db']
-        sql1 = f'select `table_name` from information_schema.tables where table_schema="{db}" ' \
-               f'and table_type="BASE TABLE"'
-        sql2 = f'select column_name, data_type from information_schema.columns where table_schema="{db}" ' \
-               f'and table_name="%s"'
+        sql1 = f"select `table_name` from information_schema.tables where table_schema='{db}' " \
+               f"and table_type='BASE TABLE'"
+        sql2 = f"select column_name, data_type from information_schema.columns where table_schema='{db}' " \
+               f"and table_name='%s'"
         sql3 = f'select count(`%s`) from {db}.`%s`'
         sql4 = f'select count(distinct `%s`) from {db}.%s'
         sql5 = f'select `%s` from {db}.`%s`'
@@ -415,23 +415,22 @@ def connect(data_source, logging):
         logging.info('An Oracle data source found.')
         import cx_Oracle
         config = data_source['config']
-        url = config['host'] + ':' + str(config['port']) + '/' + config['db']
-        conn = cx_Oracle.connect(config['user'], config['password'], url)
+        db = config['db'] if config['db'] else 'orcl'
+        user = config['user']
+        url = config['host'] + ':' + str(config['port']) + '/' + db
+        conn = cx_Oracle.connect(user, config['password'], url)
         cr = conn.cursor()
         # A column will be calculated only when its data type in `dtype_list`
         dtype_list = oracle_type_list
         db = config['user']
-        pattern = config['pattern']
-        if len(pattern) != 0:
-            db = pattern
-        sql1 = f'select table_name from all_tables where owner="{db}"'
-        sql2 = f'select column_name, data_type from all_tab_columns where table_name="%s" and owner="{db}"'
-        sql3 = f'select count("%s") from {db}."%s"'
-        sql4 = f'select count(distinct "%s") from {db}."%s"'
-        sql5 = f'select "%s" from {db}."%s"'
-        sql6 = f'select "%s" from {db}."%s" where rownum <= 1000'
-        sql7 = f'select count(1) from {db}."%s"'
-        sql8 = f'select count(1) from {db}."%s" where length("%s") = lengthb("%s")'
+        sql1 = f"select table_name from all_tables where owner='{user}'"
+        sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' and owner='{user}'"
+        sql3 = f'select count("%s") from {user}."%s"'
+        sql4 = f'select count(distinct "%s") from {user}."%s"'
+        sql5 = f'select "%s" from {user}."%s"'
+        sql6 = f'select "%s" from {user}."%s" where rownum <= 1000'
+        sql7 = f'select count(1) from {user}."%s"'
+        sql8 = f'select count(1) from {user}."%s" where length("%s") = lengthb("%s")'
     elif data_source['type'].upper() == 'POSTGRESQL':
         logging.info('A PostgreSQL data source found.')
         import psycopg2
@@ -603,20 +602,20 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
                         pos_cols.append(col_name)
                 else:
                     pos_cols.append(col_name)
-            if len(pos_pks):
-                pks[tab] = pos_pks
-                logging.info(f'{" " * 6}Num of possible primary keys of table `{tab}`:{len(pos_pks)}')
-            else:
-                no_pks.append(tab)
-                logging.info(f'{" " * 6}`{tab}` has no possible primary keys.')
-            cols[tab] = pos_cols
-            if len(pos_cols):
-                logging.info(f'{" " * 6}Num of possible foreign keys of table `{tab}`:{len(pos_cols)}')
-            else:
-                logging.info(f'{" " * 6}`{tab}` has no possible foreign keys.')
-            run_time = time.clock() - start_time
-            logging.info(f"{' ' * 6}`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
-                         f"run time:{run_time:.3f}")
+        if len(pos_pks):
+            pks[tab] = pos_pks
+            logging.info(f'{" " * 6}Num of possible primary keys of table `{tab}`:{len(pos_pks)}')
+        else:
+            no_pks.append(tab)
+            logging.info(f'{" " * 6}`{tab}` has no possible primary keys.')
+        cols[tab] = pos_cols
+        if len(pos_cols):
+            logging.info(f'{" " * 6}Num of possible foreign keys of table `{tab}`:{len(pos_cols)}')
+        else:
+            logging.info(f'{" " * 6}`{tab}` has no possible foreign keys.')
+        run_time = time.clock() - start_time
+        logging.info(f"{' ' * 6}`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
+                     f"run time:{run_time:.3f}")
     return cols, length, length_long, length_zero, no_pks, pks, no_exist
 
 
