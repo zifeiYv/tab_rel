@@ -85,6 +85,8 @@ def update_parameter():
 @app.route(url + 'finish/')
 def func():
     model_id = request.args.get('model_id')
+    if int(model_id) == 1:
+        print(3/(1-int(model_id)))
     return f"Finish {model_id}"
 
 
