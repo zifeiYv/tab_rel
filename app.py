@@ -4,8 +4,8 @@
 @Author     : Jarvis
 @Annotation : Sorry for this shit code
 """
-from config import url, port, redis_config
-from flask import Flask, request, abort, make_response, jsonify
+from config import url, redis_config
+from flask import Flask, request, abort, jsonify
 from utils import del_cache_files
 from main_utils import main_process, R
 from concurrent.futures import ProcessPoolExecutor
@@ -85,10 +85,8 @@ def update_parameter():
 @app.route(url + 'finish/')
 def func():
     model_id = request.args.get('model_id')
-    if int(model_id) == 1:
-        print(3/(1-int(model_id)))
     return f"Finish {model_id}"
 
 
 if __name__ == '__main__':
-    app.run('0.0.0.0', port=port, debug=True)
+    app.run('0.0.0.0', port=5002, debug=True)

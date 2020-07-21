@@ -8,29 +8,34 @@
 # Parameters in this file will be effective once the web app is reactivated.
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 url = '/all_tables_relation/'
-port = 5002
+# 使用了gunicorn来启动服务，不再通过此处指定端口
+# port = 5002
 
 # If columns are treated both as primary key and foreign key. Default is `False`.
 both_roles = False
 
-# A string combined by some table names and separated by ',', used to declare tables that are not allowed to
+# A string combined by some table names and separated by ',',
+# used to declare tables that are not allowed to
 # contain primary keys.
 # Default is `None`.
 not_base_table = None
 
-# A string combined by some table names and separated by ',', used to declare tables that are not allowed to
+# A string combined by some table names and separated by ',',
+# used to declare tables that are not allowed to
 # contain foreign keys.
 # Default is `None`.
 not_cite_table = None
 
-# A float range from 0 to 1. Declare the upper bound of percentage of the number of foreign key columns not included in
+# A float range from 0 to 1. Declare the upper bound of percentage
+# of the number of foreign key columns not included in
 # the primary key column to the total number of foreign key values.
 # Default is `0`, which means a strict citation relationship.
 sup_out_foreign_key = 0
 
 # Whether use multiprocess to speed calculation, default is not, set it to `1` to turn on.
 # Fast mode may take too much CPU and slow down other program.
-# Multiple processes will be started only when the number of rows is larger than 1e6, even with mode on
+# Multiple processes will be started only when the number of rows is larger than 1e6,
+# even with mode on
 multi_process = 1
 
 # Redis config, used to show progress.
