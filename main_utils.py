@@ -4,7 +4,7 @@
 @Author     : Jarvis
 @Annotation : Sorry for this shit code
 """
-from utils import check_connection, check_parameters, gen_logger
+from utils import check_connection, gen_logger
 from utils import col_name_filter, col_value_filter, res_to_db, roll_back
 from pymysql.connections import Connection
 import pymysql
@@ -28,6 +28,7 @@ not_cite_table_list = [] if not not_cite_table else list(not_cite_table.split(',
 
 
 class R:
+    """如果没有安装redis环境或者配置错误导致无法连接，那么则实例化这个类，以避免进度条不可用时相关方法报错"""
     def get(self, name):
         pass
 
@@ -40,36 +41,31 @@ try:
     r.ping()
 except Exception as err:
     print(err)
-    print('Can not connect to redis and progress is not available.')
+    print('无法连接redis，进度条功能不可用。')
     r = R()
 
 
 def main_process(post_json):
-    """The main function of calculation.
+    """计算的主过程。
 
     Args:
-        post_json(dict): All json-format parameters posted by user.
+        post_json(dict): 用户POST的参数
 
     Returns:
 
     """
     global r
-    r.set('stage', '初始化')  # Stage of calculation
-    r.set('progress', 0)  # Progress, value between 0 and 100
-    r.set('msg', '')  # Additional message
-    r.set('state', 0)  # Calculation state, 0 means calculating, 1 means finished(or some errors occur)
-    # Check if the parameters is valid.
-    # if isinstance(check_parameters(post_json), str):
-    #     r.set('progress', 0)
-    #     r.set('state', 1)
-    #     r.set('msg', check_parameters(post_json))
-    #     return {'state': 0, 'msg': check_parameters(post_json)}
+    r.set('stage', '初始化')  # 计算的阶段
+    r.set('progress', 0)  # 当前阶段的进度，取值为0-100
+    r.set('msg', '')  # 额外的信息
+    r.set('state', 0)  # 计算的状态, 0：计算中, 1：计算完成(或出错)
+
     # Check if the config database is connectable.
     config_map = post_json['configMap']
     conn = check_connection(config_map)
     if not isinstance(conn, Connection):
-        msg = 'A connection error occurs when connecting to MySQL database. See console for more information.'
-        r.set('progress', 10)
+        msg = '在连接配置数据库时出现一个错误'
+        r.set('progress', 100)
         r.set('state', 1)
         r.set('msg', msg)
         return {'state': 0, 'msg': msg}
@@ -80,25 +76,22 @@ def main_process(post_json):
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     logging = gen_logger(model_id)
     logging.info(f'{"*" * 80}')
-    logging.info('All parameters required are satisfied and starting calculation'.upper())
+    logging.info('所有参数处理完成，开始进行计算。')
     logging.info(f'{"*" * 80}')
     logging.info(f'model ID : {model_id}')
     if multi_process:
         logging.warning('Multi process mode')
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # Initialize the status table.
-    # Note:
-    #   - For a new model, which means there are no relation results before, program will create
-    #   a new record in status table with '1'(means analyzing) in `analysisstatus` field and
-    #   rewrite it to '2'(means analyzed). If some errors occur, program will delete this new
-    #   record.
-    #   - For a model that already has relation results, program will re-calculate and overwrite
-    #   its results(some results may be kept, the keeping rules is defined in following code). To
-    #   do this, program will find the model status record(by `model_id`) first and change its
-    #   `analysisstatus` to '1'. After calculation, set it to '2'. If some errors occur, program
-    #   will rollback the value to '2'.
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    logging.info('Initializing the analysis status table...')
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # 初始化模型的状态表。
+    # 注意:
+    #   - 对于一个新建的模型，结果表中是不存在旧结果的，因此，程序会在状态表中插入一条新记录，字段
+    #   "analysisstatus"的值为1（代表"计算中"），并且在计算完成后将这个值改写为2（代表"计算完成"）。
+    #   如果在计算过程中出现来一些错误，那么程序会删除这一条新增的记录。
+    #   - 对于一个已经计算过关系的模型，结果表中可能存在旧结果，因此，重新计算时，程序会将旧结果全部删除（用户
+    #   指定的某些结果会得到保留）。另外，由于已经计算过，所以状态表中字段"analysisstatus"的值为2，程序首先
+    #   将其改写为1，如果计算完成，再改写为1。如果过程中出错，那么将把该值重新恢复成2。
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    logging.info('初始化状态表...')
     r.set('progress', 30)
 
     sql = f'REPLACE INTO analysis_status (id, analysis_status, algorithm_name, execute_obj,' \
@@ -110,46 +103,43 @@ def main_process(post_json):
             res = cr.fetchone()
             if not res:
                 status_bak = False
-                logging.info('This is a new model, rollback will delete status record.')
+                logging.info('模型首次参与运行，回滚操作时将会删除状态表中的记录。')
             else:
                 status_bak = res[0]
-                logging.info('This is a re-calculation model, rollback will set `status` value to original.')
+                logging.info('模型已经存在运算结果，回滚操作将会把状态值改写为2。')
             # Change the status to 'analyzing'
             cr.execute(sql)
             conn.commit()
             r.set('progress', 100)
     except Exception as e:
         logging.error(e)
-        logging.info('Starting roll back...')
+        logging.info('开始回滚...')
         try:
             roll_back(status_bak, conn, model_id)
-            logging.info('Roll back success.')
+            logging.info('回滚完成')
         except Exception as e:
             # This error is due to the undefined of `status_bak`.
-            logging.info('An error occurs when rolling back.')
+            logging.info('回滚出错')
             logging.error(e)
-        r.set('progress', 0)
+        r.set('progress', 100)
         r.set('state', 1)
-        return {'state': 0, 'msg': 'An error occurs when initializing status table.'}
-    logging.info('Initialization complete.')
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    #   `custom parameters` are critical values for restraint conditions. Since the accuracy of relation results is
-    # deeply affected by the data source tables, such as table's length, fields' data type and value length, etc,
-    # it is very useful to let user specify the critical values so that the result accuracy will be improved.
-    #   Users can edit parameters on front page and the parameters will be stored into config database. Parameters are
-    # distinguished by `model_id`, which means you can only change parameters of one model at a time. If users don't
-    # want to change them, the defaults will be used.
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+        return {'state': 0, 'msg': '初始化状态表时出错'}
+    logging.info('初始化完成')
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    #   "custom parameters"记录了一些临界值，这些临界值对于计算结果的准确性是有非常大的影响的。用户在充分理解
+    #   各个值的作用的情况下，调整这些值有利于使结果更加合理。
+    #   如果用户不加修改，那么会采用默认值。
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     r.set('stage', '参数获取')  # Stage of calculation
     r.set('progress', 0)  # Progress, value between 0 and 100
     r.set('msg', '')  # Additional message
-    logging.info('Getting custom parameters from user config table...')
+    logging.info('获取用户参数...')
     sql = f'select t.csl, t.ds, t.idr, t.isl, t.itl, t.tables1, t.tables2 from ' \
           f'pf_user_config t where t.model="{model_id}{model_id}"'
     try:
         with conn.cursor() as cr:
             if cr.execute(sql):
-                logging.info('Get custom parameters successfully.')
+                logging.info('获取用户参数成功。')
                 res = cr.fetchone()
                 use_str_len = str(res[0]) if res[0] else '0'
                 data_cleansing = eval(str(res[1])) if res[1] else {'_': ['EXT_', 'ext_']}
@@ -157,72 +147,34 @@ def main_process(post_json):
                 inf_str_len = res[3] if res[3] else 3
                 inf_tab_len = res[4] if res[4] else 10
                 tables1 = list(res[5].split(',')) if res[5] else []
-                tables2 = list(res[6].split(',')) if res[6] else []
             else:
-                logging.warning('No custom parameters and defaults will be used.')
+                logging.warning('当前未指定参数，将采用默认值。')
                 use_str_len = '0'
                 data_cleansing = {'_': ['EXT_', 'ext_']}
                 inf_dup_ratio = 0.4
                 inf_str_len = 3
                 inf_tab_len = 10
                 tables1 = []
-                tables2 = []
             # Merge custom parameters to a tuple
             custom_para = (use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len)
             r.set('progress', 100)
     except Exception as e:
         logging.error(e)
-        logging.info('Staring roll back...')
+        logging.info('开始回滚...')
         roll_back(status_bak, conn, model_id)
-        logging.info('Roll back success.')
+        logging.info('回滚成功')
         r.set('state', 1)
-        r.set('msg', 'An error occurs when getting custom parameters.')
-        return {'state': 0, 'msg': 'An error occurs when getting custom parameters.'}
-    logging.info('Getting custom parameters complete.')
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    #   If re-compute a model, program will delete old results firstly. The deletion is valid only for non-tagged
-    # results.
-    #   A tagged result is a record that was added/edited/deleted by users. For normal records, program will mark '0' to
-    # `scantype` field; For added/edited records, program will mark '1' to `scantype` field.
-    #
-    last_rel_res = []  # cache the last computation results
-    user_rel_res = []  # cache the user tagged results
-    if status_bak:  # a re-compute model
-        r.set('stage', '删除旧结果')
-        r.set('progress', 0)
-        r.set('msg', '')
-        try:
-            logging.info('Caching last computation results and deleting non-tagged results...')
-            with conn.cursor() as cr:
-                cr.execute(f'select db1, table1, column1, db2, table2, column2 from analysis_results where '
-                           f'model="{model_id}"')
-                res = cr.fetchall()
-                for r_ in res:
-                    last_rel_res.append("".join(r_))
-                cr.execute(f'delete from analysis_results where model="{model_id}" and `scantype`=0')
-                cr.execute(f'select db1, table1, column1, db2, table2, column2 from analysis_results where '
-                           f'model="{model_id}" and `scantype` != 0')
-                res = cr.fetchall()
-                for r_ in res:
-                    user_rel_res.append("".join(r_))
-            conn.commit()
-            r.set('progress', 100)
-        except Exception as e:
-            logging.error(e)
-            logging.info('Starting roll back...')
-            roll_back(status_bak, conn, model_id)
-            logging.info('Roll back success.')
-            r.set('state', 1)
-            r.set('msg', 'An error occurs when caching old results.')
-            return {'state': 0, 'msg': 'An error occurs when caching old results.'}
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    #   After initialization, program will get data source information through model id and connect data source
-    # to get data. The source tables can come from both one single database or two different databases.
-    #
-    # In this branch, all tables come from one single database.
+        r.set('msg', '回滚出错')
+        r.set('progress', 100)
+        return {'state': 0, 'msg': '回滚过程出错'}
+    logging.info('完成参数获取')
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    #   初始化完成后，程序将从配置文件中获取数据源的相关信息，开始读取数据进行计算。
+    #   目前，只支持从单一数据源获取数据进行计算。
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     r.set('stage', '计算关系1/3')
     r.set('progress', 0)
-    logging.info('All tables come from one single database.')
     data_source = post_json['dbInfo']
     data_source['model_id'] = model_id
     data_source['tables'] = tables1
@@ -230,67 +182,109 @@ def main_process(post_json):
     finish_url = post_json['notifyUrl']
     finish_url += f'?modelId={model_id}'
 
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    #   如果模型并非首次进行运算，那么在写入新的结果前会把部分旧的结果删除。
+    #   如果旧的结果是用户手动添加的或者经过了用户的编辑或是用户删除的数据，那么在结果表中的"scantype"字段
+    #   会以"1"标示；否则，以"0"标示。在执行删除操作时，只会删除"scantype"取值为"0"的记录。
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    last_rel_res = []  # 缓存上次计算的结果
+    user_rel_res = []  # 缓存经过用户标记的结果
+    if status_bak:  # a re-compute model
+        try:
+            logging.info('缓存上次计算结果...')
+            with conn.cursor() as cr:
+                cr.execute(
+                    f'select db1, table1, column1, db2, table2, column2 from analysis_results '
+                    f'where '
+                    f'model="{model_id}"')
+                res = cr.fetchall()
+                for r_ in res:
+                    last_rel_res.append("".join(r_))
+                cr.execute(
+                    f'select db1, table1, column1, db2, table2, column2 from analysis_results '
+                    f'where '
+                    f'model="{model_id}" and `scantype` != 0')
+                res = cr.fetchall()
+                for r_ in res:
+                    user_rel_res.append("".join(r_))
+            conn.commit()
+        except Exception as e:
+            logging.error(e)
+            logging.info('开始回滚...')
+            roll_back(status_bak, conn, model_id)
+            logging.info('回滚出错')
+            return {'state': 0, 'msg': '缓存旧结果时出错。'}
+
     output = one_db(data_source, logging, custom_para, user_rel_res)
+
     if output.empty:
         r.set('state', 1)
         r.set('msg', 'Empty output')
-        logging.info('Empty output')
+        logging.info('结果为空')
         roll_back(status_bak, conn, model_id)
         requests.get(finish_url)
-        logging.info(f'calculation complete.')
-    r.set('stage', '结果入库')
-    r.set('progress', 0)
-    num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
-    num_rel = len(output)
-    r.set('progress', 100)
+        logging.info(f'计算完成')
+    else:
+        # 删除旧版结果
+        with conn.cursor() as cr:
+            cr.execute(
+                f'delete from analysis_results where model="{model_id}" and `scantype`=0')
+        r.set('stage', '结果入库')
+        r.set('progress', 0)
+        num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
+        num_rel = len(output)
+        r.set('progress', 100)
 
-    end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    sql = f'update analysis_status set analysis_status="2", relation_num={num_rel}, new_relation_num={num_new_rel},' \
-          f'end_time="{end_time}" where id="{model_id}"'
-    with conn.cursor() as cr:
-        cr.execute(sql)
-        conn.commit()
-    conn.close()
-    r.set('state', 1)
-    r.set('msg', 'Complete')
-    requests.get(finish_url)
-    logging.info(f'calculation complete.')
+        end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        sql = f'update analysis_status set analysis_status="2", relation_num={num_rel}, ' \
+              f'new_relation_num={num_new_rel},' \
+              f'end_time="{end_time}" where id="{model_id}"'
+        with conn.cursor() as cr:
+            cr.execute(sql)
+            conn.commit()
+        conn.close()
+        r.set('state', 1)
+        r.set('msg', 'Complete')
+        requests.get(finish_url)
+        logging.info(f'计算完成')
 
 
 def one_db(data_source, logging, custom_para, user_rel_res):
-    """This function is used to handle that all tables come from the same database.
+    """对于单系统中的所有的表之间的关系进行查找。
 
     Args:
-        data_source(dict): A dict contains all information for connecting data source.
-        logging: A log object.
-        custom_para(tuple): A tuple contains custom parameters.
-        user_rel_res(list): A list contains relation results that modified by user.
+        data_source(dict): 源数据库的连接信息
+        logging: 日志记录器
+        custom_para(tuple): 用户配置的参数
+        user_rel_res(list): 用户标记的结果列表
 
     Returns:
 
     """
-    conn, cr, path, dtype_list, sql1, sql2, sql3, sql4, sql5, sql6, sql7, sql8 = connect(data_source, logging)
+    conn, cr, path, dtype_list, sql1, sql2, sql3, sql4, sql5, \
+        sql6, sql7, sql8 = connect(data_source, logging)
     use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len = custom_para
     if not conn:
         return None
     if not data_source['tables']:
-        logging.info('Not specify table names, all tables in database will be used.')
+        logging.info('未指定表，将对数据库中的所有表进行关系查找')
         cr.execute(sql1)
         ori_tabs = list(map(lambda x: x[0], cr.fetchall()))
     else:
-        logging.info('The specified tables will be used.')
+        logging.info('将对指定的表进行关系查找')
         ori_tabs = data_source['tables']
 
-    new_tabs, cols, length, length_long, length_zero, no_pks, pks, no_exist = get_cache_files(path, ori_tabs, logging)
+    new_tabs, cols, length, length_long, length_zero, no_pks, \
+        pks, no_exist = get_cache_files(path, ori_tabs, logging)
 
-    logging.info('Finding primary keys and possible foreign keys...')
+    logging.info('主键与外键查找...')
     new_cols, new_length, new_length_long, new_length_zero, new_no_pks, \
         new_pks, new_no_exist = fine_pk_and_pc(cr, new_tabs, (sql2, sql3, sql4, sql7, sql8),
                                                dtype_list, logging, data_cleansing)
-    logging.info('Finished.')
+    logging.info('完成')
 
     r.set('stage', '计算关系2/3')
-    logging.info('Update/Create cache files...')
+    logging.info('更新/创建缓存文件...')
     cols.update(new_cols)
     length.update(new_length)
     length_long.update(new_length_long)
@@ -304,22 +298,22 @@ def one_db(data_source, logging, custom_para, user_rel_res):
     for v in ['cols', 'length', 'length_long', 'length_zero', 'no_pks', 'pks', 'no_exist']:
         with open(f'./table_attr/{path}/{v}.json', 'w') as f:
             json.dump(eval(v), f)
-    logging.info('Finished.')
+    logging.info('完成')
 
-    logging.info('Generating filter-files for new tables...')
+    logging.info('创建过滤器...')
     gen_bloom_filter(pks, length, path, conn, logging, sql5)
-    logging.info('Finished.')
+    logging.info('完成')
 
     r.set('stage', '计算关系3/3')
-    logging.info('Computing table relations...')
+    logging.info('计算表关系...')
     results = []
     for i in range(len(ori_tabs)):
         r.set('progress', 100 * i / len(ori_tabs))
         tab = ori_tabs[i]
         logging.info(f'{i + 1:4}/{len(ori_tabs)}:Computing `{tab}`...')
-        if tab in not_cite_table_list:  # Not allowed to have foreign keys
+        if tab in not_cite_table_list:  # 不允许有外键连接
             continue
-        if length[tab] < inf_tab_len:  # Table is too short
+        if length[tab] < inf_tab_len:  # 记录数太少
             continue
         if not cols.get(tab):
             continue
@@ -345,7 +339,7 @@ def one_db(data_source, logging, custom_para, user_rel_res):
                         continue
                     for pk_col in pks[pk_name]:
                         if "".join((path, pk_name, pk_col, path, tab, col)) in user_rel_res:
-                            # skip the results edited by users.
+                            # 用户标记过的数据不进行存储
                             continue
                         with open(f'./filters/{path}/{pk_name}@{pk_col}.filter', 'rb') as f:
                             bf = pickle.load(f)
@@ -359,16 +353,16 @@ def one_db(data_source, logging, custom_para, user_rel_res):
                                 break
                         if flag:  # `flag` equals `0` means these two columns has no relationship.
                             not_match_ratio = num_not_in_bf / all_num
-                            res = [data_source['model_id'], path, pk_name, 'table-comment', pk_col, 'column-comment',
-                                   data_source['model_id'], path, tab, 'table-comment', col, 'column-comment',
-                                   not_match_ratio]
+                            res = [data_source['model_id'], path, pk_name, 'table-comment',
+                                   pk_col, 'column-comment', data_source['model_id'], path, tab,
+                                   'table-comment', col, 'column-comment', not_match_ratio]
                             results.append(res)
             except Exception as e:
                 print(e)
 
-    output = pd.DataFrame(columns=['model1', 'db1', 'table1', 'table1comment', 'column1', 'column1comment',
-                                   'model2', 'db2', 'table2', 'table2comment', 'column2', 'column2comment',
-                                   'matching_degree'],
+    output = pd.DataFrame(columns=['model1', 'db1', 'table1', 'table1comment', 'column1',
+                                   'column1comment', 'model2', 'db2', 'table2', 'table2comment',
+                                   'column2', 'column2comment', 'matching_degree'],
                           index=range(len(results)))
     if results:
         for i in range(len(results)):
@@ -379,20 +373,20 @@ def one_db(data_source, logging, custom_para, user_rel_res):
 
 
 def connect(data_source, logging):
-    """According to `data_source`, this function try to connect database and return some useful object for later
-    calculation.
-        This function supports four kinds of database: MySQL, Gbase, Oracle, PostgreSQL.
+    """根据`data_source`, 得到数据库的连接对象以及一些有用的SQL。
+
+    目前，支持四种数据库类型: MySQL, Gbase, Oracle, PostgreSQL.
 
     Args:
-        data_source(dict): A dict contains all information for connecting data source.
-        logging: Log object.
+        data_source(dict): 参数字典
+        logging: 日志记录器
 
     Returns:
-        Connection objects and some useful sql.
+
     """
-    # MySQL and Gbase databases share the same module.
+    # MySQL与Gbase 均可以通过pymysql进行连接
     if data_source['type'].upper() in ('MYSQL', 'GBASE'):
-        logging.info(f'A MySQL/Gbase data source found.')
+        logging.info(f'发现MySQL/Gbase数据源')
         config = data_source['config']
         if 'pattern' in config.keys():
             config.pop('pattern')
@@ -403,7 +397,8 @@ def connect(data_source, logging):
         db = config['db']
         sql1 = f"select `table_name` from information_schema.tables where table_schema='{db}' " \
                f"and table_type='BASE TABLE'"
-        sql2 = f"select column_name, data_type from information_schema.columns where table_schema='{db}' " \
+        sql2 = f"select column_name, data_type from information_schema.columns where " \
+               f"table_schema='{db}' " \
                f"and table_name='%s'"
         sql3 = f'select count(`%s`) from {db}.`%s`'
         sql4 = f'select count(distinct `%s`) from {db}.%s'
@@ -412,7 +407,7 @@ def connect(data_source, logging):
         sql7 = f'select count(1) from {db}.`%s`'
         sql8 = f'select count(*) from {db}.`%s` where length(`%s`)=char_length(`%s`)'
     elif data_source['type'].upper() == 'ORACLE':
-        logging.info('An Oracle data source found.')
+        logging.info('发现Oracle数据源')
         import cx_Oracle
         config = data_source['config']
         db = config['db'] if config['db'] else 'orcl'
@@ -424,7 +419,8 @@ def connect(data_source, logging):
         dtype_list = oracle_type_list
         db = config['user']
         sql1 = f"select table_name from all_tables where owner='{user}'"
-        sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' and owner='{user}'"
+        sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
+               f"and owner='{user}'"
         sql3 = f'select count("%s") from {user}."%s"'
         sql4 = f'select count(distinct "%s") from {user}."%s"'
         sql5 = f'select "%s" from {user}."%s"'
@@ -432,7 +428,7 @@ def connect(data_source, logging):
         sql7 = f'select count(1) from {user}."%s"'
         sql8 = f'select count(1) from {user}."%s" where length("%s") = lengthb("%s")'
     elif data_source['type'].upper() == 'POSTGRESQL':
-        logging.info('A PostgreSQL data source found.')
+        logging.info('发现PostgreSQL数据源')
         import psycopg2
         config = data_source['config']
         # A column will be calculated only when its data type in `dtype_list`
@@ -443,8 +439,10 @@ def connect(data_source, logging):
         cr = conn.cursor()
         pattern = config['pattern']
         sql1 = f"select tablename from pg_tables where schemaname='{pattern}'"
-        sql2 = f'select a.attname as name, substring(format_type(a.atttypid, a.atttypmod) from "[a-zA-Z]*") as ' \
-               f'type from pg_class as c, pg_attribute as a, pg_namespace as p where c.relnamespace=p.oid ' \
+        sql2 = f'select a.attname as name, substring(format_type(a.atttypid, a.atttypmod) from ' \
+               f'"[a-zA-Z]*") as ' \
+               f'type from pg_class as c, pg_attribute as a, pg_namespace as p where ' \
+               f'c.relnamespace=p.oid ' \
                f'and c.relname="%s" and a.attrelid=c.oid and a.attnum > 0 and p.nspname="{pattern}"'
         sql3 = f'select count("%s") from {pattern}.%s'
         sql4 = f'select count(distinct "%s") from {pattern}.%s'
@@ -459,17 +457,17 @@ def connect(data_source, logging):
 
 
 def get_cache_files(path, ori_tabs, logging):
-    """Try to get the cached filter files to speed calculation.
+    """尝试获取缓存文件以加速计算。
 
     Args:
-        path(str): Subdirectory to filters.
-        ori_tabs(list): List of original table names.
-        logging: Log object.
+        path(str): 缓存文件路径
+        ori_tabs(list): 表名组成的列表
+        logging: 日志记录器
 
     Returns:
-        Cached information and new tables to generate filters.
+
     """
-    logging.info('Trying to get cached filter files...')
+    logging.info('尝试获取缓存文件...')
     try:
         with open(f'./table_attr/{path}/cols.json') as f:
             cached_cols = json.load(f)
@@ -495,9 +493,9 @@ def get_cache_files(path, ori_tabs, logging):
         no_pks = cached_no_pks.copy()
         pks = cached_pks.copy()
         no_exist = cached_no_exist.copy()
-        logging.info('Getting caches success.')
+        logging.info('成功')
     except IOError:
-        logging.info('No caches available.')
+        logging.info('无可用的缓存文件')
         new_tabs = ori_tabs
         cols = {}
         length = {}
@@ -510,20 +508,20 @@ def get_cache_files(path, ori_tabs, logging):
 
 
 def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
-    """Find the primary keys and possible foreign keys.
+    """查找表的主键与外键。
 
     Args:
-        cr: A connected database cursor object.
-        tabs(list): List of table names that needed to be calculated.
-        sqls(tuple): A tuple of SQL statements:
+        cr: 数据库连接的游标对象
+        tabs(list): 表名列表
+        sqls(tuple): sql语句组成的元组
             sql2-SQL statement used to find column name and its data type.
             sql3-SQL statement used to find length of a column.
             sql4-SQL statement used to find length of a distincted column.
             sql7-SQL statement used to find length of a table.
             sql8-SQL statement used to find ...
-        dtype_list(list): A list of data types.
-        logging: Log object.
-        data_cleansing(dict): A dict contains filter rules.
+        dtype_list(list): 数据类型组成的列表
+        logging: 日志记录器
+        data_cleansing(dict): 数据过滤规则字典
 
     Returns:
 
@@ -620,15 +618,15 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
 
 
 def gen_bloom_filter(pks, length, path, conn, logging, sql5):
-    """Generate bloom-filter file for primary keys of `pks`.
+    """为主键字段生成过滤器文件。
 
     Args:
-        pks(dict): Table names and their possible primary keys.
-        length(dict): Table names and their table length.
-        path(str): Directory to store filter files.
-        conn: A database connection object.
-        logging: Log object.
-        sql5(str): SQL statement used to ...
+        pks(dict): 存储表名及其可能主键的字典
+        length(dict): 表名及其长度的字典
+        path(str): 存储路径
+        conn: 数据库连接对象
+        logging: 日志记录器
+        sql5(str): sql语句
 
     Returns:
 

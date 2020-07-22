@@ -65,7 +65,8 @@ def find_relation():
 def get_progress():
     if isinstance(r, R):
         return jsonify({'stage': 0, 'progress': '无法启动进度功能'})
-    return jsonify({'stage': str(r.get('stage'), 'utf-8'), 'progress': round(float(str(r.get('progress'), 'utf-8')), 2),
+    return jsonify({'stage': str(r.get('stage'), 'utf-8'),
+                    'progress': round(float(str(r.get('progress'), 'utf-8')), 2),
                     'state': int(str(r.get('state'), 'utf-8')), 'msg': str(r.get('msg'), 'utf-8')})
 
 
