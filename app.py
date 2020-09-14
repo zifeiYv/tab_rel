@@ -90,4 +90,6 @@ def func():
 
 
 if __name__ == '__main__':
+    # 正式环境下用以下命令启动服务
+    # gunicorn -c gunicorn_config.py app:app
     app.run('0.0.0.0', port=5002, debug=True)

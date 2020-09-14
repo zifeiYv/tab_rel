@@ -19,7 +19,7 @@
 # gunicorn -c gunicorn_config.py app:app
 #
 # 监听的ip与端口
-bind = '127.0.0.1:5002'
+bind = '0.0.0.0:5002'
 
 # 进程数量
 # workers = 4
