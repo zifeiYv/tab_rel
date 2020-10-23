@@ -644,7 +644,7 @@ def gen_bloom_filter(pks, length, path, conn, logging, sql5):
         filters = {}
 
     total_num = sum(list(map(lambda x: len(pks[x]), list(pks))))
-    logging.info(f'{total_num} filters will be created as most.')
+    logging.info(f'{total_num} filters will be created at most.')
     n = 1
     for i in range(len(pks)):
         tab = list(pks.keys())[i]
