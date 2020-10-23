@@ -535,7 +535,7 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
     pks = {}
     no_exist = []
     for i in range(len(tabs)):
-        start_time = time.clock()
+        start_time = time.perf_counter()
         tab = tabs[i]
         logging.info(f'{i + 1}/{len(tabs)}: `{tab}` starting...')
         r.set('progress', 100 * (i + 1) / len(tabs))
@@ -611,7 +611,7 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
             logging.info(f'{" " * 6}Num of possible foreign keys of table `{tab}`:{len(pos_cols)}')
         else:
             logging.info(f'{" " * 6}`{tab}` has no possible foreign keys.')
-        run_time = time.clock() - start_time
+        run_time = time.perf_counter() - start_time
         logging.info(f"{' ' * 6}`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
                      f"run time:{run_time:.3f}")
     return cols, length, length_long, length_zero, no_pks, pks, no_exist
