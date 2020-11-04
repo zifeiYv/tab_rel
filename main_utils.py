@@ -534,6 +534,7 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
     no_pks = []
     pks = {}
     no_exist = []
+    start_time_first = time.perf_counter()
     for i in range(len(tabs)):
         start_time = time.perf_counter()
         tab = tabs[i]
@@ -543,15 +544,15 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
             cr.execute(sql7 % tab)
         except Exception as e:
             no_exist.append(tab)
-            logging.info(f'`{tab}` does not exist:{e}!')
+            logging.info(f'{" " * 6}`{tab}` does not exist:{e}!')
             continue
         row_num = cr.fetchone()[0]
         if row_num > 1e8:
-            logging.info(f'`{tab}` is too long to be skipped')
+            logging.info(f'{" " * 6}`{tab}` is too long to be skipped')
             length_long[tab] = row_num
             continue
         elif row_num == 0:
-            logging.info(f'`{tab}` has no data and is skipped')
+            logging.info(f'{" " * 6}`{tab}` has no data and is skipped')
             length_zero.append(tab)
             continue
         length[tab] = row_num
@@ -614,6 +615,15 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
         run_time = time.perf_counter() - start_time
         logging.info(f"{' ' * 6}`{tab}`'s info: \t# records:{row_num}\t # fields:{len(cols_dtype)}\t "
                      f"run time:{run_time:.3f}")
+    end_time_last = time.perf_counter()
+    logging.info(f"""
+    主外键查找统计：
+        有效表总数：{len(length)}
+        空表总数  ：{len(length_zero)}
+        超大表总数：{len(length_long)}
+        有效记录数：{sum(length.values())}
+        耗时     ：{end_time_last - start_time_first}
+    """)
     return cols, length, length_long, length_zero, no_pks, pks, no_exist
 
 
