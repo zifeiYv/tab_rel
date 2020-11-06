@@ -208,6 +208,7 @@ def main_process(post_json):
                 for r_ in res:
                     user_rel_res.append("".join(r_))
             conn.commit()
+            logging.info('获取缓存结果完成')
         except Exception as e:
             logging.error(e)
             logging.info('开始回滚...')
@@ -666,6 +667,10 @@ def gen_bloom_filter(pks, length, path, conn, logging, sql5):
             col = cols[k]
             logging.info(f'{n:4}/{total_num:4}:Computing {tab}.{col}, {length[tab]} rows in total.')
             if tab + '@' + col in filters:
+                logging.info(f'{" " * 9}{tab}.{col} already exists, continue.')
+                n += 1
+                continue
+            if os.path.exists(f'./filters/{path}/{tab}@{col}.filter'):
                 logging.info(f'{" " * 9}{tab}.{col} already exists, continue.')
                 n += 1
                 continue
