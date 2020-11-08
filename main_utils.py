@@ -675,6 +675,8 @@ def gen_bloom_filter(pks, length, path, conn, logging, sql5):
                 n += 1
                 continue
             value = pd.read_sql(sql5 % (col, tab), conn, coerce_float=False)
+            if value.shape[0] > capacity:
+                capacity = value.shape[0] * 2
             if multi_process and length[tab] > 1e6:
                 bf = add_operation(value, capacity)
             else:
