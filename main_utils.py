@@ -413,21 +413,25 @@ def connect(data_source, logging):
         config = data_source['config']
         db = config['db'] if config['db'] else 'orcl'
         user = config['user']
-        url = config['host'] + ':' + str(config['port']) + '/' + db
+        #
+        # todo: 实例往往不是传入的内容，在此将其写死
+        # url = config['host'] + ':' + str(config['port']) + '/' + db
+        #
+        url = config['host'] + ':' + str(config['port']) + '/' + 'orcl'
+        #
         conn = cx_Oracle.connect(user, config['password'], url)
         cr = conn.cursor()
         # A column will be calculated only when its data type in `dtype_list`
         dtype_list = oracle_type_list
-        db = config['user']
-        sql1 = f"select table_name from all_tables where owner='{user}'"
+        sql1 = f"select table_name from all_tables where owner='{db}'"
         sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
-               f"and owner='{user}'"
-        sql3 = f'select count("%s") from {user}."%s"'
-        sql4 = f'select count(distinct "%s") from {user}."%s"'
-        sql5 = f'select "%s" from {user}."%s"'
-        sql6 = f'select "%s" from {user}."%s" where rownum <= 1000'
-        sql7 = f'select count(1) from {user}."%s"'
-        sql8 = f'select count(1) from {user}."%s" where length("%s") = lengthb("%s")'
+               f"and owner='{db}'"
+        sql3 = f'select count("%s") from {db}."%s"'
+        sql4 = f'select count(distinct "%s") from {db}."%s"'
+        sql5 = f'select "%s" from {db}."%s"'
+        sql6 = f'select "%s" from {db}."%s" where rownum <= 1000'
+        sql7 = f'select count(1) from {db}."%s"'
+        sql8 = f'select count(1) from {db}."%s" where length("%s") = lengthb("%s")'
     elif data_source['type'].upper() == 'POSTGRESQL':
         logging.info('发现PostgreSQL数据源')
         import psycopg2
