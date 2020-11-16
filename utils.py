@@ -308,6 +308,57 @@ def res_to_db(output, config, last_rel_res, log):
     return num_new_rel
 
 
+def res_to_db2(output, conn, last_rel_res, log):
+    """Insert `output` results to database.
+
+    Args:
+        output: A data frame contains relation results.
+        conn: A config dict for target database.
+        last_rel_res: Table relation of last computation.
+        log: A log object.
+
+    Returns:
+
+    """
+    cr = conn.cursor()
+    num_new_rel = 0
+    for i in range(output.shape[0]):
+        _id = str(uuid.uuid1()).replace('-', '')
+        line = output.iloc[i]
+        model_id = line['model1']
+        db1 = line['db1']
+        table1 = line['table1']
+        table1comment = line['table1comment'].replace("\'", "\\'").replace("\"", "\\")
+        column1 = line['column1']
+        column1comment = line['column1comment'].replace("\'", "\\'").replace("\"", "\\")
+        db2 = line['db2']
+        table2 = line['table2']
+        table2comment = line['table2comment'].replace("\'", "\\'").replace("\"", "\\")
+        column2 = line['column2']
+        column2comment = line['column2comment'].replace("\'", "\\'").replace("\"", "\\")
+        not_match_ratio = line['matching_degree']
+        if (db1 + table1 + column1 + db2 + table2 + column2) in last_rel_res:
+            status = 0
+        else:
+            status = 1
+            num_new_rel += 1
+        insert_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        sql = f'insert into analysis_results(`id`, `model`, `db1`, `table1`, `table1_comment`, ' \
+              f'`column1`, `column1_comment`, `db2`, `table2`, `table2_comment`, `column2`, ' \
+              f'`column2_comment`, `status`, `scantype`,`create_time`,`edit_time`, `matching_degree`) values (' \
+              f'"{_id}", "{model_id}", "{db1}", "{table1}", "{table1comment}", "{column1}", "{column1comment}", ' \
+              f' "{db2}", "{table2}","{table2comment}", "{column2}","{column2comment}","{status}", "0", ' \
+              f'"{insert_time}", "{insert_time}", "{not_match_ratio}")'
+        try:
+            cr.execute(sql)
+        except Exception as e:
+            log.error(e)
+            continue
+    conn.commit()
+    cr.close()
+    return num_new_rel
+
+
 def roll_back(status_bak, conn, model_id):
     """This roll back operation is designed for table 'analysis_status' to make sure the 'analysisstatus' field back
      to its original value if some errors occur in computation.
