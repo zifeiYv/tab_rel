@@ -36,7 +36,7 @@ sup_out_foreign_key = 0
 # Fast mode may take too much CPU and slow down other program.
 # Multiple processes will be started only when the number of rows is larger than 1e6,
 # even with mode on
-multi_process = 1
+multi_process = 0
 
 # Redis config, used to show progress.
 redis_config = {'host': 'localhost', 'port': 6379, }
