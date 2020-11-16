@@ -411,18 +411,21 @@ def connect(data_source, logging):
         logging.info('发现Oracle数据源')
         import cx_Oracle
         config = data_source['config']
-        db = config['db'] if config['db'] else 'orcl'
+        db = config['db']
         user = config['user']
-        #
-        # todo: 实例往往不是传入的内容，在此将其写死
-        # url = config['host'] + ':' + str(config['port']) + '/' + db
-        #
-        url = config['host'] + ':' + str(config['port']) + '/' + 'orcl'
-        #
+        url = config['url']
+        url = url.split('@')[1]
         conn = cx_Oracle.connect(user, config['password'], url)
         cr = conn.cursor()
+        multi_schema = config.get('multi_schema')
+        target_schema = config.get('target_schema')
         # A column will be calculated only when its data type in `dtype_list`
         dtype_list = oracle_type_list
+        if multi_schema:
+            logging.info("多模式")
+            db = target_schema
+        else:
+            logging.info("单模式")
         sql1 = f"select table_name from all_tables where owner='{db}'"
         sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
                f"and owner='{db}'"
@@ -474,6 +477,10 @@ def get_cache_files(path, ori_tabs, logging):
     """
     logging.info('尝试获取缓存文件...')
     try:
+        # 不使用缓存
+        with open('./table_attr/unexistfile') as f:
+            _ = json.load(f)
+        #
         with open(f'./table_attr/{path}/cols.json') as f:
             cached_cols = json.load(f)
         with open(f'./table_attr/{path}/length.json') as f:

@@ -44,9 +44,13 @@ def find_relation():
                     "host": "191.168.6.103",
                     "password": "merit",
                     "port": 3306,
-                    "user": "root"
-                },
-                "type": "mysql"
+                    "user": "root",
+                    "url": "localhost:1521/orcl",  # 仅用于oracle数据库
+                    "multi_schema": False,  # 是否为多模式，仅用于oracle数据库
+                    "target_schema": ""  # 引用的模式，仅用于oracle数据库
+                    },
+                "type": "mysql",
+                "tables: []  # 存储指定表进行融合
             },
             "notifyUrl":"http://1121",
             "executObj": "local_db v1版本",
