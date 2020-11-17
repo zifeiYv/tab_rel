@@ -191,7 +191,7 @@ def main_process(post_json):
     user_rel_res = []  # 缓存经过用户标记的结果
     if status_bak:  # a re-compute model
         try:
-            logging.info('缓存上次计算结果...')
+            logging.info('加载上次计算结果...')
             with conn.cursor() as cr:
                 cr.execute(
                     f'select db1, table1, column1, db2, table2, column2 from analysis_results '
@@ -208,13 +208,13 @@ def main_process(post_json):
                 for r_ in res:
                     user_rel_res.append("".join(r_))
             conn.commit()
-            logging.info('获取缓存结果完成')
+            logging.info('加载结果完成')
         except Exception as e:
             logging.error(e)
             logging.info('开始回滚...')
             roll_back(status_bak, conn, model_id)
             logging.info('回滚出错')
-            return {'state': 0, 'msg': '缓存旧结果时出错。'}
+            return {'state': 0, 'msg': '加载旧结果时出错。'}
 
     output = one_db(data_source, logging, custom_para, user_rel_res)
 
