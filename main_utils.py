@@ -389,9 +389,9 @@ def connect(data_source, logging):
     if data_source['type'].upper() in ('MYSQL', 'GBASE'):
         logging.info(f'发现MySQL/Gbase数据源')
         config = data_source['config']
-        if 'pattern' in config.keys():
-            config.pop('pattern')
-        conn = pymysql.connect(**config, charset='utf8')
+        mysql_config = dict((key, value) for key, value in config.items()
+                            if key in ['db', 'host', 'password', 'port', 'user'])
+        conn = pymysql.connect(**mysql_config, charset='utf8')
         cr = conn.cursor()
         # A column will be calculated only when its data type in `dtype_list`
         dtype_list = mysql_type_list
