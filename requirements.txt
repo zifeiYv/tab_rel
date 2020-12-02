@@ -12,11 +12,9 @@ idna==2.8
 itsdangerous==1.1.0
 Jinja2==2.11.1
 MarkupSafe==1.1.1
-mkl-random==1.1.0
-mkl-service==2.3.0
 numpy==1.18.1
 pandas==1.0.0
-psycopg2==2.8.4
+psycopg2-binary
 pybloom-mirror==2.0.0
 pycparser==2.19
 PyMySQL==0.9.3
