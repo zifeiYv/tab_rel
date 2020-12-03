@@ -121,7 +121,7 @@ def check_connection(config):
         return e
 
 
-def gen_logger(log_file_name, console_print=True):
+def gen_logger(log_file_name, console_print=False):
     """This function is used to generate an object that can log the key messages of calculation.
     All log files are stored in `../logs/`(will be created for the first time) directory and
     the file name is corresponding with model ids.
