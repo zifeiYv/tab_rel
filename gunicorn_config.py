@@ -12,7 +12,8 @@ os.mkdir('./logs')
 bind = '0.0.0.0:5002'
 
 # 进程数量
-# workers = 4
+# Gunicorn should only need 4-12 worker processes to handle hundreds or thousands of requests per second.
+workers = 2 * os.cpu_count() + 1
 
 # 日志处理
 accesslog = './logs/info_log'
