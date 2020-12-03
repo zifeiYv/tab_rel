@@ -231,7 +231,8 @@ def main_process(post_json):
                 f'delete from analysis_results where model="{model_id}" and `scantype`=0')
         r.set('stage', '结果入库')
         r.set('progress', 0)
-        num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
+        # num_new_rel = res_to_db(output, config_map, last_rel_res, logging)
+        num_new_rel = res_to_db2(output, conn, last_rel_res, logging)
         num_rel = len(output)
         r.set('progress', 100)
 
