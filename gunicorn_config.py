@@ -1,20 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-#-------------------------------------------------------------------#
-#                    Project Name : code                            #
-#                                                                   #
-#                       File Name : gunicorn_config.py              #
-#                                                                   #
-#                          Author : Jiawei Sun                      #
-#                                                                   #
-#                          Email : j.w.sun1992@gmail.com            #
-#                                                                   #
-#                      Start Date : 2020/07/21                      #
-#                                                                   #
-#                     Last Update :                                 #
-#                                                                   #
-#-------------------------------------------------------------------#
-"""
+import os
+import shutil
+
+if os.path.exists('./logs'):
+    shutil.rmtree('./logs')
+os.mkdir('./logs')
 # 启动方式
 # gunicorn -c gunicorn_config.py app:app
 #

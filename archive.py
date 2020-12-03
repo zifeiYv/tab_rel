@@ -13,7 +13,6 @@ source_code = args.s
 if source_code:
     if os.path.exists('./logs'):
         shutil.rmtree('./logs')
-    os.mkdir('logs')
     os.popen("git archive -o code_`git rev-parse HEAD | cut -c 1-5`.zip HEAD")
 else:
     if os.path.exists('./archive_code'):
