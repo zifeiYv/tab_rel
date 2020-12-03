@@ -22,3 +22,5 @@ errorlog = './logs/error_log'
 
 loglevel = 'warning'
 
+# 设置timeout时间
+timeout = 600
