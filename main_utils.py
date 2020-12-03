@@ -5,7 +5,7 @@
 @Annotation : Sorry for this shit code
 """
 from utils import check_connection, gen_logger
-from utils import col_name_filter, col_value_filter, res_to_db, roll_back
+from utils import col_name_filter, col_value_filter, res_to_db, roll_back, res_to_db2
 from pymysql.connections import Connection
 import pymysql
 import time
@@ -40,8 +40,7 @@ try:
     r = redis.Redis(**redis_config)
     r.ping()
 except Exception as err:
-    print(err)
-    print('无法连接redis，进度条功能不可用。')
+    # print('无法连接redis，进度条功能不可用。')
     r = R()
 
 
