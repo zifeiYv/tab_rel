@@ -14,7 +14,10 @@ SHA256校验码为：
 
 **注意：**
 
-python的版本必须是python3.8，为此，Conda的版本也必须是对应的。上述链接可能在将来会对应更高版本的python，因此，必须保证校验码的一致性。历史版本的Miniconda可以在[此处](https://repo.anaconda.com/miniconda/)找到。
+python的版本必须是python3.8，为此，Conda的版本也必须是对应的，上述链接可能在将来会对应更高版本的python，因此，必须保证校验码的一致性。
+
+历史版本的Miniconda可以在[此处](https://repo.anaconda.com/miniconda/) 找到。
+
 
 下载完安装文件后，执行`sh Miniconda3-latest-Linux-x86_64.sh`进行安装，安装完成后可能需要重启shell或者重新导入配置文件：
 ```
