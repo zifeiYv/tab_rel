@@ -41,7 +41,7 @@ try:
     r = redis.Redis(**redis_config)
     r.ping()
 except Exception:
-    print(traceback.print_tb())
+    print(traceback.print_exc())
     r = R()
 
 
@@ -112,7 +112,7 @@ def main_process(post_json):
             conn.commit()
             r.set('progress', 100)
     except Exception as e:
-        print(traceback.print_tb())
+        print(traceback.print_exc())
         logging.error(e)
         logging.info('开始回滚...')
         try:
@@ -378,6 +378,15 @@ def one_db(data_source, logging, custom_para, user_rel_res):
 def connect(data_source, logging):
     """根据`data_source`, 得到数据库的连接对象以及一些有用的SQL。
 
+    sql1：获取当前数据库/用户下的所有表的名称
+    sql2：获取指定表中的所有字段及其数据类型
+    sql3：获取指定表的指定字段的非空数据的个数
+    sql4：获取指定表的指定字段的去重后的数据的个数
+    sql5：获取指定表的指定字段的全部内容
+    sql6：获取指定表的指定字段的1000行内容
+    sql7：获取指定表的总行数
+    sql8：获取某字段去除中文后的数据的个数
+
     目前，支持四种数据库类型: MySQL, Gbase, Oracle, PostgreSQL.
 
     Args:
@@ -459,7 +468,7 @@ def connect(data_source, logging):
         sql5 = f'select "%s" from {pattern}.%s'
         sql6 = f'select "%s" from {pattern}.%s '
         sql7 = f'select count(1) from {pattern}.%s'
-        sql8 = f'select count(*) from {pattern}.%s where length("%s") = octet_length("%s")'
+        sql8 = f'select count(*) from {pattern}.%s where length("%s") = ("%s")'
     else:
         logging.error('Data source type is invalid.')
         db = conn = cr = dtype_list = sql1 = sql2 = sql3 = sql4 = sql5 = sql6 = sql7 = sql8 = None
@@ -528,11 +537,6 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
         cr: 数据库连接的游标对象
         tabs(list): 表名列表
         sqls(tuple): sql语句组成的元组
-            sql2-SQL statement used to find column name and its data type.
-            sql3-SQL statement used to find length of a column.
-            sql4-SQL statement used to find length of a distincted column.
-            sql7-SQL statement used to find length of a table.
-            sql8-SQL statement used to find ...
         dtype_list(list): 数据类型组成的列表
         logging: 日志记录器
         data_cleansing(dict): 数据过滤规则字典
@@ -591,7 +595,7 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
                 logging.error(e)
                 logging.error(sql3 % (col_name, tab))
                 continue
-            num1 = cr.fetchone()[0]
+            num1 = cr.fetchone()[0]  # 某个字段的非空数据总数
             if num1 == row_num:
                 try:
                     cr.execute(sql4 % (col_name, tab))
@@ -599,15 +603,15 @@ def fine_pk_and_pc(cr, tabs, sqls, dtype_list, logging, data_cleansing):
                     logging.error(e)
                     logging.error(sql4 % (col_name, tab))
                     continue
-                num2 = cr.fetchone()[0]
+                num2 = cr.fetchone()[0]  # 某个字段的去重后的非空数据总数
                 try:
                     cr.execute(sql8 % (tab, col_name, col_name))
                 except Exception as e:
                     logging.error(e)
                     logging.error(sql8 % (tab, col_name, col_name))
                     continue
-                num3 = cr.fetchone()[0]
-                if num1 == num2 and num1 == num3:
+                num3 = cr.fetchone()[0]  # 某个字段去除中文字符后的非空数据总数
+                if num1 == num2 and num1 == num3:  # 数据无重复且无中文
                     pos_pks.append(col_name)
                     if both_roles:
                         pos_cols.append(col_name)

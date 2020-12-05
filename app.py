@@ -19,7 +19,7 @@ try:
     r.ping()
 except Exception:
     print('Can not connect to redis and progress is not available.')
-    print(traceback.print_tb())
+    print(traceback.print_exc())
     r = R()
 
 
