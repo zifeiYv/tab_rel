@@ -10,15 +10,16 @@ from utils import del_cache_files
 from main_utils import main_process, R
 from concurrent.futures import ProcessPoolExecutor
 import redis
+import traceback
 
 app = Flask(__name__)
 executor = ProcessPoolExecutor(1)
 try:
     r = redis.Redis(**redis_config)
     r.ping()
-except Exception as e:
-    # print(e)
-    # print('Can not connect to redis and progress is not available.')
+except Exception:
+    print('Can not connect to redis and progress is not available.')
+    print(traceback.print_tb())
     r = R()
 
 

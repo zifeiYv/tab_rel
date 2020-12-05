@@ -15,6 +15,7 @@ import requests
 import redis
 import pickle
 import pandas as pd
+import traceback
 # noinspection PyPackageRequirements
 from pybloom import BloomFilter
 from config import both_roles, not_cite_table, not_base_table, sup_out_foreign_key, \
@@ -39,8 +40,8 @@ class R:
 try:
     r = redis.Redis(**redis_config)
     r.ping()
-except Exception as err:
-    # print('无法连接redis，进度条功能不可用。')
+except Exception:
+    print(traceback.print_tb())
     r = R()
 
 
@@ -111,6 +112,7 @@ def main_process(post_json):
             conn.commit()
             r.set('progress', 100)
     except Exception as e:
+        print(traceback.print_tb())
         logging.error(e)
         logging.info('开始回滚...')
         try:
