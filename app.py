@@ -61,8 +61,8 @@ def find_relation():
     `algorithmName` and `executObj` are NOT used by this program and just stored into specific position.
     `configMap` includes the key information to connect config database.
     """
-    # executor.submit(main_process, post_json)
-    main_process(post_json)
+    executor.submit(main_process, post_json)
+    # main_process(post_json)
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
 
 
