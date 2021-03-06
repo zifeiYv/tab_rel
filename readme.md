@@ -7,9 +7,9 @@
 https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 ```
 
-SHA256校验码为：
+MD5校验码为：
 ```
-1314b90489f154602fd794accfc90446111514a5a72fe1f71ab83e07de9504a7
+122c8c9beb51e124ab32a0fa6426c656
 ```
 
 **注意：**
