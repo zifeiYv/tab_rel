@@ -5,14 +5,13 @@
 @Annotation : Sorry for this shit code
 """
 from utils import check_connection, gen_logger
-from utils import col_name_filter, col_value_filter, res_to_db, roll_back, res_to_db2
+from utils import col_name_filter, col_value_filter, roll_back, res_to_db2
 from pymysql.connections import Connection
 import pymysql
 import time
 import json
 import os
 import requests
-import redis
 import pickle
 import pandas as pd
 import traceback
@@ -38,6 +37,7 @@ class R:
 
 
 try:
+    import redis
     r = redis.Redis(**redis_config)
     r.ping()
 except Exception:

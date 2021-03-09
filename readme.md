@@ -36,6 +36,13 @@ source ~/.bashrc
 
 2. 利用`pip`将待安装的包编译成whl文件，然后将全部文件拷贝至目标服务器进行安装，参考[这里](https://blog.csdn.net/SunJW_2017/article/details/103222205) 。
 
+3. 2021.3更新：项目包含了CentOS操作系统中对应python3.8的whl文件（`wheel.zip`），下载后解压即可参照2进行安装。
+
 # 3. 服务启动
 
-执行`nohup python app.py > nohup.out &`启动算法服务。
+正式环境中推荐使用`gunicorn`进行启动，启动命令为：
+```cmd
+gunicorn -c gunicorn_config.py app:app
+```
+
+如果要实现对进程的动态监控，推荐使用`supervisor`，使用方法参考[这里](https://blog.csdn.net/SunJW_2017/article/details/114533853) 。

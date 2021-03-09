@@ -32,3 +32,5 @@ capture_output = True
 
 # 设置进程的timeout时间
 timeout = 600
+
+daemon = True

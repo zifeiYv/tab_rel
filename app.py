@@ -9,12 +9,12 @@ from flask import Flask, request, abort, jsonify
 from utils import del_cache_files
 from main_utils import main_process, R
 from concurrent.futures import ProcessPoolExecutor
-import redis
 import traceback
 
 app = Flask(__name__)
 executor = ProcessPoolExecutor(1)
 try:
+    import redis
     r = redis.Redis(**redis_config)
     r.ping()
 except Exception:
