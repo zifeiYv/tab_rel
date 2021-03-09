@@ -24,5 +24,5 @@ else:
                  and f != 'gunicorn_config.pyc']
     for i in all_files:
         os.popen(f'mv {i} ./archive_code')
-    os.popen(f'cp readme.md requirements.txt gunicorn_config.py ./archive_code')
+    os.popen(f'cp readme.md requirements.txt gunicorn_config.py wheels.zip ./archive_code')
     os.makedirs('./archive_code/logs')
