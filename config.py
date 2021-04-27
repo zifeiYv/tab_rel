@@ -1,17 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-@Time       : 2020/2/7 16:41
-@Author     : Jarvis
-@Annotation : Sorry for this shit code
-"""
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Parameters in this file will be effective once the web app is reactivated.
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 url = '/all_tables_relation/'
-# 使用了gunicorn来启动服务，不再通过此处指定端口
-# port = 5002
 
-# If columns are treated both as primary key and foreign key. Default is `False`.
+# 一个字段是否可以既作为主键，又作为外键
 both_roles = False
 
 # A string combined by some table names and separated by ',',
@@ -38,10 +28,10 @@ sup_out_foreign_key = 0
 # even with mode on
 multi_process = 0
 
-# Redis config, used to show progress.
-redis_config = {'host': 'localhost', 'port': 6379, }
-
 # Data type list, which contains fields could be extracted
 mysql_type_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT', 'INT']  # mysql and gbase are the same
 oracle_type_list = ['VARCHAR2', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR2']
 pg_type_list = ['CHARACTER', 'TEXT']
+
+# 是否使用缓存进行计算，在测试时设置为True可能会有用
+use_cache = True

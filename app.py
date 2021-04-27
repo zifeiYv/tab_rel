@@ -1,78 +1,101 @@
 # -*- coding: utf-8 -*-
-"""
-@Time       : 2020/2/7 16:42
-@Author     : Jarvis
-@Annotation : Sorry for this shit code
-"""
-from config import url, redis_config
+from config import url
 from flask import Flask, request, abort, jsonify
-from utils import del_cache_files
-from main_utils import main_process, R
-from concurrent.futures import ProcessPoolExecutor
-import traceback
+from subprocess import Popen
+from utils.utils import del_cache_files
 
 app = Flask(__name__)
-executor = ProcessPoolExecutor(1)
-try:
-    import redis
-    r = redis.Redis(**redis_config)
-    r.ping()
-except Exception:
-    print('Can not connect to redis and progress is not available.')
-    print(traceback.print_exc())
-    r = R()
 
 
 @app.route(url + 'calculation/', methods=["POST"])
 def find_relation():
-    if not request.json:
-        return jsonify({'state': 0, 'msg': 'Invalid parameter format, json-format needed!'})
-    post_json = request.json
     """
-    The format of valid parameter posted by user is as follows:
-        {
-            "algorithmName": "表关系分析算法",
-            "configMap": {  # 配置数据库的信息
+    post参数的格式如下：
+    {
+        "algorithmName": "表关系分析算法",
+        "configMap": {  # 配置数据库的信息
+            "db": "dmm_test",
+            "host": "191.168.6.103",
+            "password": "merit",
+            "port": 3306,
+            "user": "root"
+        },
+        "dbInfo": {  # 数据源的信息
+            "config": {
                 "db": "dmm_test",
                 "host": "191.168.6.103",
                 "password": "merit",
                 "port": 3306,
-                "user": "root"
-            },
-            "dbInfo": {  # 数据源的信息
-                "config": {
-                    "db": "dmm_test",
-                    "host": "191.168.6.103",
-                    "password": "merit",
-                    "port": 3306,
-                    "user": "root",
-                    "url": "localhost:1521/orcl",  # 仅用于oracle数据库
-                    "multi_schema": False,  # 是否为多模式，仅用于oracle数据库
-                    "target_schema": ""  # 引用的模式，仅用于oracle数据库
-                    },
-                "type": "mysql",
-                "tables: []  # 存储指定表进行融合
-            },
-            "notifyUrl":"http://1121",
-            "executObj": "local_db v1版本",
-            "modelId": "92ae9b17770041ae85e563cf95c9cf56"
-        }
-            
-    `algorithmName` and `executObj` are NOT used by this program and just stored into specific position.
-    `configMap` includes the key information to connect config database.
+                "user": "root",
+                "url": "localhost:1521/orcl",  # 仅用于oracle数据库
+                "multi_schema": False,  # 是否为多模式，仅用于oracle数据库
+                "target_schema": ""  # 引用的模式，仅用于oracle数据库
+                },
+            "type": "mysql",
+            "tables": []  # 存储指定表进行融合
+        },
+        "notifyUrl":"http://1121",
+        "executObj": "local_db v1版本",
+        "modelId": "92ae9b17770041ae85e563cf95c9cf56"
+    }
+
+    `algorithmName`与`executObj`并不会被本算法使用，只是做了一次转存
     """
-    executor.submit(main_process, post_json)
-    # main_process(post_json)
+    if not request.json:
+        return jsonify({'state': 0, 'msg': 'Invalid parameter format, json-format needed!'})
+    args = request.json
+    # 第一层的参数
+    model_id = args['modelId']
+    notify_url = args['notifyUrl']
+    execute_obj = args['executObj']
+    alg_name = args['algorithmName']
+
+    # 第二层的参数
+    config_map = args['configMap']
+    db_info = args['dbInfo']
+    # # 存储结果的配置库的信息
+    cfg_db = config_map['db']
+    cfg_host = config_map['host']
+    cfg_passwd = config_map['password']
+    cfg_port = str(config_map['port'])
+    cfg_user = config_map['user']
+    # # 目标数据源的信息
+    tar_type = db_info['type']
+    tar_tables = str(db_info['tables'])
+    tar_db = db_info['config']['db']
+    tar_host = db_info['config']['host']
+    tar_passwd = db_info['config']['password']
+    tar_port = str(db_info['config']['port'])
+    tar_user = db_info['config']['user']
+    # >>> 以下仅用于Oracle数据库
+    tar_url = db_info['config']['url']
+    tar_multi_schema = db_info['config']['multi_schema']
+    tar_schema = db_info['config']['target_schema']
+    # <<< 以上仅用于Oracle数据库
+
+    Popen(['python', 'run.py',
+           '--model_id', model_id,
+           '--notify_url', notify_url,
+           '--execute_obj', execute_obj,
+           '--alg_name', alg_name,
+           '--cfg_db', cfg_db,
+           '--cfg_host', cfg_host,
+           '--cfg_passwd', cfg_passwd,
+           '--cfg_port', cfg_port,
+           '--cfg_user', cfg_user,
+           '--tar_type', tar_type,
+           '--tar_tables', tar_tables,
+           '--tar_db', tar_db,
+           '--tar_host', tar_host,
+           '--tar_passwd', tar_passwd,
+           '--tar_port', tar_port,
+           '--tar_user', tar_user,
+           '--tar_url', tar_url,
+           '--tar_multi_schema', tar_multi_schema,
+           '--tar_schema', tar_schema
+           ])
+
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
-
-
-@app.route(url + 'get_progress/')
-def get_progress():
-    if isinstance(r, R):
-        return jsonify({'stage': 0, 'progress': '无法启动进度功能'})
-    return jsonify({'stage': str(r.get('stage'), 'utf-8'),
-                    'progress': round(float(str(r.get('progress'), 'utf-8')), 2),
-                    'state': int(str(r.get('state'), 'utf-8')), 'msg': str(r.get('msg'), 'utf-8')})
 
 
 @app.route("/update_parameter_config/", methods=['POST'])
