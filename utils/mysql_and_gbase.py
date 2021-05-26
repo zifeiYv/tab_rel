@@ -23,11 +23,12 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
         logger.info(f'使用多进程，进程数量为：{processes}')
 
     conn = pymysql.connect(**db_kw)
+    db = db_kw['db']
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
-            sql = f'select table_name from information_schema.tables where table_schema="{db_kw["db"]}" ' \
-                  f'and table_type="BASE TABLE"'
+            sql = f"select table_name from information_schema.tables where table_schema='{db}' " \
+                  f"and table_type='BASE TABLE'"
             cr.execute(sql)
             tables = [i[0] for i in cr.fetchall()]
         conn.close()
@@ -37,6 +38,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if not tables:
         logger.warning('未发现可用表')
         return
+    logger.info(f'获取表成功，共：{len(tables)}个')
 
     if multi_process:
         if len(tables) < 150:
@@ -67,6 +69,7 @@ def execute(model_id, processes, tables, **kwargs):
         output = find_rel(rel_cols, pks, model_id, False, host,
                           port, user, passwd, db)
     else:
+        logger.info('多进程预处理数据...')
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
         else:
@@ -92,7 +95,9 @@ def execute(model_id, processes, tables, **kwargs):
             _a, _b = q.get()
             rel_cols.update(_a)
             pks.update(_b)
+        logger.info('多进程数据预处理完成')
 
+        logger.info('多进程关系发现...')
         q = multiprocessing.Queue()
         jobs = []
         rel_cols_items = list(rel_cols.items())
@@ -157,7 +162,7 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
         tables = [table]
     sql1 = f'select count(1) from `{db}`.`%s`'
     sql2 = f'select column_name, data_type from information_schema.columns where ' \
-           f'table_schema="{db}" and table_name="%s"'
+           f"table_schema='{db}' and table_name='%s'"
     sql3 = f'select count(`%s`) from `{db}`.`%s`'
     sql4 = f'select count(distinct `%s`) from `{db}`.`%s`'
     sql5 = f'select count(1) from `{db}`.`%s` where length(`%s`)=char_length(`%s`)'
@@ -178,9 +183,11 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
             if row_num > 1e8:
                 length_too_long[tab] = row_num
                 logger.debug(f'  {tab}：超长，被过滤')
+                continue
             elif row_num == 0:
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
+                continue
             else:
                 length_normal[tab] = row_num
                 logger.debug(f'  {tab}：长度合格')
@@ -221,7 +228,7 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
             without_pks.append(tab)
             continue
 
-        logger.debug(f'  {tab}：生成filter文件')
+        logger.debug(f'  {tab}：正在生成filter文件')
         if not os.path.exists(f'./filters/{model_id}/{db}'):
             os.makedirs(f'./filters/{model_id}/{db}')
         capacity = int(length_normal[tab] * 1.2)
@@ -240,6 +247,8 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
     logger.info('完成')
     if q:
         q.put((rel_cols, pks))
+    cr.close()
+    conn.close()
     return rel_cols, pks
 
 
@@ -301,5 +310,6 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
                         results.append(res)
     if q:
         q.put(results)
+    conn.close()
     logger.info('完成')
     return results

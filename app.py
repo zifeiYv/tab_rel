@@ -61,16 +61,22 @@ def find_relation():
     cfg_user = config_map['user']
     # # 目标数据源的信息
     tar_type = db_info['type']
-    tar_tables = str(db_info['tables'])
+    try:
+        tar_tables = str(db_info['tables'])
+    except KeyError:
+        tar_tables = '[]'
     tar_db = db_info['config']['db']
     tar_host = db_info['config']['host']
     tar_passwd = db_info['config']['password']
     tar_port = str(db_info['config']['port'])
     tar_user = db_info['config']['user']
     # >>> 以下仅用于Oracle数据库
-    tar_url = db_info['config']['url']
-    tar_multi_schema = db_info['config']['multi_schema']
-    tar_schema = db_info['config']['target_schema']
+    try:
+        tar_url = db_info['config']['url']
+        tar_multi_schema = db_info['config']['multi_schema']
+        tar_schema = db_info['config']['target_schema']
+    except KeyError:
+        tar_url = tar_multi_schema = tar_schema = ''
     # <<< 以上仅用于Oracle数据库
 
     Popen(['python', 'run.py',

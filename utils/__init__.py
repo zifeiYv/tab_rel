@@ -78,8 +78,16 @@ def main(**kwargs):
                 inf_str_len = res[3] if res[3] else 3
                 inf_tab_len = res[4] if res[4] else 10
                 tables1 = list(res[5].split(',')) if res[5] else []
+            else:
+                logger.info('当前未指定参数，将采用默认值。')
+                use_str_len = '0'
+                data_cleansing = {'_': ['EXT_', 'ext_']}
+                inf_dup_ratio = 0.4
+                inf_str_len = 3
+                inf_tab_len = 10
+                tables1 = []
         except:
-            logger.warning('当前未指定参数，将采用默认值。')
+            logger.warning('获取参数的SQL执行错误。')
             use_str_len = '0'
             data_cleansing = {'_': ['EXT_', 'ext_']}
             inf_dup_ratio = 0.4
