@@ -2,11 +2,11 @@
 import os
 import logging
 import cx_Oracle
-from config import multi_process, mysql_type_list, both_roles, sup_out_foreign_key
+from config import multi_process, oracle_type_list, both_roles, sup_out_foreign_key
 import pandas as pd
 from pybloom import BloomFilter
 import pickle
-from utils.utils import EmptyLogger
+from utils.utils import sub_process_logger
 import multiprocessing
 
 
@@ -28,8 +28,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
-            sql = f'select table_name from information_schema.tables where table_schema="{db_kw["db"]}" ' \
-                  f'and table_type="BASE TABLE"'
+            sql = f"select table_name from all_tables where owner='{user}'"
             cr.execute(sql)
             tables = [i[0] for i in cr.fetchall()]
         conn.close()
@@ -39,6 +38,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if not tables:
         logger.warning('未发现可用表')
         return
+    logger.info(f'获取表成功，共：{len(tables)}个')
 
     if multi_process:
         if len(tables) < 150:
@@ -61,13 +61,13 @@ def execute(model_id, processes, tables, **kwargs):
     """
     logger = logging.getLogger(f'{model_id}')
 
-    host, port, user = kwargs['host'], int(kwargs['port']), kwargs['user']
-    passwd, db = kwargs['passwd'], kwargs['db']
+    url, user = kwargs['url'], kwargs['user']
+    passwd = kwargs['passwd']
     if processes == 1:  # 单进程
-        rel_cols, pks = pre_processing(model_id, tables, False, host,
-                                       port, user, passwd, db)
-        output = find_rel(rel_cols, pks, model_id, False, host,
-                          port, user, passwd, db)
+        rel_cols, pks = pre_processing(model_id, tables, False, user,
+                                       passwd, url)
+        output = find_rel(rel_cols, pks, model_id, False,
+                          user, passwd, url)
     else:
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
@@ -79,11 +79,11 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size:],
-                                                  True, host, port, user, passwd, db, q,))
+                                                  True, user, passwd, url, q,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
-                                                  True, host, port, user, passwd, db, q,))
+                                                  True, user, passwd, url, q,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -102,11 +102,11 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size:], pks,
-                                                  model_id, True, host, port, user, passwd, db, q,))
+                                                  model_id, True, user, passwd, url, q,))
             else:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size: (i + 1) * batch_size], pks,
-                                                  model_id, True, host, port, user, passwd, db, q,))
+                                                  model_id, True, user, passwd, url, q,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -128,18 +128,16 @@ def execute(model_id, processes, tables, **kwargs):
         logger.info('未找到关系')
 
 
-def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None):
+def pre_processing(model_id, tables, multi, user, passwd, url, q=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 模型的唯一标识
-        table: 表名，要么为list，要么为str
+        tables: 表名，要么为list，要么为str
         multi(bool): 是否采用多进程进行计算
-        host(str):
-        port(int):
         user(str):
         passwd(str):
-        db(str):
+        url(str):
         q: 队列
 
     Returns:
@@ -150,19 +148,18 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
     if not multi:
         logger = logging.getLogger(f'{model_id}')
     else:
-        logger = EmptyLogger()
-    conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""
+                本子进程中需要处理的表总数为{len(tables)}
+                """)
+    conn = cx_Oracle.connect(user, passwd, url)
 
-    if isinstance(table, list):
-        tables = table
-    else:  # str
-        tables = [table]
-    sql1 = f'select count(1) from `{db}`.`%s`'
-    sql2 = f'select column_name, data_type from information_schema.columns where ' \
-           f'table_schema="{db}" and table_name="%s"'
-    sql3 = f'select count(`%s`) from `{db}`.`%s`'
-    sql4 = f'select count(distinct `%s`) from `{db}`.`%s`'
-    sql5 = f'select count(1) from `{db}`.`%s` where length(`%s`)=char_length(`%s`)'
+    sql1 = f'select count(1) from {user}."%s"'
+    sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
+           f"and owner='{user}'"
+    sql3 = f'select count("%s") from {user}."%s"'
+    sql4 = f'select count(distinct "%s") from {user}."%s"'
+    sql5 = f'select count(1) from {user}."%s" where length("%s")=lengthb("%s")'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -198,8 +195,8 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
         for i in range(len(field_and_type)):
             field_name = field_and_type[i][0]
             field_type = field_and_type[i][1]
-            if field_type.upper() not in mysql_type_list:
-                logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
+            if field_type.upper() not in oracle_type_list:
+                logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{oracle_type_list}')
                 continue
             cr.execute(sql3 % (field_name, tab))
             num1 = cr.fetchone()[0]
@@ -224,39 +221,39 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
             continue
 
         logger.debug(f'  {tab}：生成filter文件')
-        if not os.path.exists(f'./filters/{model_id}/{db}'):
-            os.makedirs(f'./filters/{model_id}/{db}')
+        if not os.path.exists(f'./filters/{model_id}/{user}'):
+            os.makedirs(f'./filters/{model_id}/{user}')
         capacity = int(length_normal[tab] * 1.2)
         for pk in pks[tab]:
             filter_name = tab + '@' + pk + '.filter'
-            if os.path.exists(f'./filters/{model_id}/{db}/{filter_name}'):
+            if os.path.exists(f'./filters/{model_id}/{user}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
             value = pd.read_sql(f"select {pk} from {tab}", conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
-            with open(f'./filters/{model_id}/{db}/{filter_name}', 'wb') as f:
+            with open(f'./filters/{model_id}/{user}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
         logger.debug(f'  {tab}：全部filter已保存')
+    cr.close()
+    conn.close()
     logger.info('完成')
     if q:
         q.put((rel_cols, pks))
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=None):
+def find_rel(rel_cols, pks, model_id, multi, user, passwd, url, q=None):
     """查找关系。
 
     Args:
         rel_cols(dict): 一个字典，键为表名，值为该张表可能作为外键的字段列表
         pks(dict):
-        host(str):
-        port(int):
         user(str):
         passwd(str):
         model_id(str):
-        db(str):
+        url(str):
         multi(bool):
         q:
 
@@ -266,7 +263,11 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     if not multi:
         logger = logging.getLogger(model_id)
     else:
-        logger = EmptyLogger()
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""
+                        本子进程中需要处理的表总数为{len(rel_cols)}
+                        """)
+    conn = cx_Oracle.connect(user, passwd, url)
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
         for i in rel_cols:
@@ -274,9 +275,8 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select `%s` from `{db}`.`%s` limit 10000'
+    sql = f'select `%s` from `{user}`.`%s` where rownum <= 10000'
     results = []
-    conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
     logger.info('计算所有关系')
     for tab in rel_cols_dict:
         for col in rel_cols_dict[tab]:
@@ -285,7 +285,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
                 if pk_tab == tab:
                     continue
                 for pk in pks[pk_tab]:
-                    with open(f'./filters/{model_id}/{db}/{pk_tab}@{pk}.filter', 'rb') as f:
+                    with open(f'./filters/{model_id}/{user}/{pk_tab}@{pk}.filter', 'rb') as f:
                         bf = pickle.load(f)
                     flag = 1
                     num_not_in_bf = 0
@@ -297,11 +297,12 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
                             break
                     if flag:
                         not_match_ratio = num_not_in_bf / 10000
-                        res = [model_id, db, pk_tab, 'table1comment', pk, 'column1comment',
-                               model_id, db,
+                        res = [model_id, user, pk_tab, 'table1comment', pk, 'column1comment',
+                               model_id, user,
                                tab, 'table2comment', col, 'column2comment', not_match_ratio]
                         results.append(res)
     if q:
         q.put(results)
+    conn.close()
     logger.info('完成')
     return results

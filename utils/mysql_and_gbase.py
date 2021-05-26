@@ -8,6 +8,7 @@ from pybloom import BloomFilter
 import pickle
 from utils.utils import sub_process_logger
 import multiprocessing
+import traceback
 
 
 def run(model_id, tar_tables=None, custom_para=None, **db_kw):
@@ -198,7 +199,13 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
             continue
 
         logger.debug(f'  {tab}：查找主键')
-        cr.execute(sql2 % tab)
+        try:
+            cr.execute(sql2 % tab)
+        except pymysql.err.InternalError:
+            logger.warning('数据库内部错误')
+            logger.warning(traceback.format_exc())
+            continue
+
         field_and_type = cr.fetchall()
         psb_pk, psb_col = [], []
         for j in range(len(field_and_type)):
@@ -207,13 +214,23 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
             if field_type.upper() not in mysql_type_list:
                 logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
                 continue
-            cr.execute(sql3 % (field_name, tab))
+            try:
+                cr.execute(sql3 % (field_name, tab))
+            except pymysql.err.InternalError:
+                logger.warning('数据库内部错误')
+                logger.warning(traceback.format_exc())
+                continue
             num1 = cr.fetchone()[0]
             if num1 == row_num:
-                cr.execute(sql4 % (field_name, tab))
-                num2 = cr.fetchone()[0]
-                cr.execute(sql5 % (tab, field_name, field_name))
-                num3 = cr.fetchone()[0]
+                try:
+                    cr.execute(sql4 % (field_name, tab))
+                    num2 = cr.fetchone()[0]
+                    cr.execute(sql5 % (tab, field_name, field_name))
+                    num3 = cr.fetchone()[0]
+                except pymysql.err.InternalError:
+                    logger.warning('数据库内部错误')
+                    logger.warning(traceback.format_exc())
+                    continue
                 if num1 == num2 and num2 == num3:
                     psb_pk.append(field_name)
                     if both_roles:

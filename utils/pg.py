@@ -6,7 +6,7 @@ from config import multi_process, mysql_type_list, both_roles, sup_out_foreign_k
 import pandas as pd
 from pybloom import BloomFilter
 import pickle
-from utils.utils import EmptyLogger
+from utils.utils import sub_process_logger
 import multiprocessing
 
 
@@ -130,12 +130,12 @@ def execute(model_id, processes, tables, **kwargs):
         logger.info('未找到关系')
 
 
-def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None):
+def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 模型的唯一标识
-        table: 表名，要么为list，要么为str
+        tables: 表名，要么为list，要么为str
         multi(bool): 是否采用多进程进行计算
         host(str):
         port(int):
@@ -152,16 +152,18 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
     if not multi:
         logger = logging.getLogger(f'{model_id}')
     else:
-        logger = EmptyLogger()
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""
+                        本子进程中需要处理的表总数为{len(tables)}
+                    """)
     conn = psycopg2.connect(host=host, port=port, user=user, password=passwd, database=db)
 
-    if isinstance(table, list):
-        tables = table
-    else:  # str
-        tables = [table]
     sql1 = f'select count(1) from {db}.%s'
-    sql2 = f'select column_name, data_type from information_schema.columns where ' \
-           f'table_schema="{db}" and table_name="%s"'
+    sql2 = f'select a.attname as name, substring(format_type(a.atttypid, a.atttypmod) from ' \
+           f'"[a-zA-Z]*") as ' \
+           f'type from pg_class as c, pg_attribute as a, pg_namespace as p where ' \
+           f'c.relnamespace=p.oid ' \
+           f'and c.relname="%s" and a.attrelid=c.oid and a.attnum > 0 and p.nspname="{db}"'
     sql3 = f'select count("%s") from {db}.%s'
     sql4 = f'select count(distinct "%s") from {db}.%s'
     sql5 = f'select count(1) from {db}.%s where length("%s")=("%s")'
@@ -242,6 +244,8 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
                 pickle.dump(bf, f)
         logger.debug(f'  {tab}：全部filter已保存')
     logger.info('完成')
+    cr.close()
+    conn.close()
     if q:
         q.put((rel_cols, pks))
     return rel_cols, pks
@@ -268,7 +272,10 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     if not multi:
         logger = logging.getLogger(model_id)
     else:
-        logger = EmptyLogger()
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""
+                                本子进程中需要处理的表总数为{len(rel_cols)}
+                            """)
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
         for i in rel_cols:
