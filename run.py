@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 from utils import main
-from utils.utils import get_logger
-import os
+from utils.utils import init_logger
 
 
 if __name__ == '__main__':
@@ -49,10 +48,7 @@ if __name__ == '__main__':
     tar_url = args.tar_url
     tar_multi_schema = args.tar_multi_schema
     tar_schema = args.tar_schema
-    if not os.path.exists('./logs'):
-        os.makedirs('./logs')
-    get_logger(model_id)
-
+    init_logger(model_id)
     main(model_id=model_id, notify_url=notify_url, execute_obj=execute_obj, alg_name=alg_name,
          cfg_db=cfg_db, cfg_host=cfg_host, cfg_passwd=cfg_passwd, cfg_port=cfg_port, cfg_user=cfg_user,
          tar_type=tar_type, tar_tables=tar_tables, tar_db=tar_db, tar_host=tar_host, tar_passwd=tar_passwd,

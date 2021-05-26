@@ -1,66 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-@Time       : 2020/2/8 13:26
-@Author     : Jarvis
-@Annotation : Sorry for this shit code
-
-The database server where results table and status table in is MySQL. Table names are `pf_analysis_result1` and
-`pf_analysis_status` and not self-specified. In general, they will be created when initializing the system.
-
-The definition of above tables are as follows:
-
-    SET FOREIGN_KEY_CHECKS=0;
-    -- ----------------------------
-    -- Table structure for pf_analysis_result1
-    -- ----------------------------
-    DROP TABLE IF EXISTS `pf_analysis_result1`;
-    CREATE TABLE `pf_analysis_result1` (
-      `id` varchar(255) NOT NULL,
-      `id1` varchar(255) DEFAULT NULL,
-      `id2` varchar(255) DEFAULT NULL,
-      `linkageid` varchar(255) DEFAULT NULL,
-      `table1` varchar(255) DEFAULT NULL,
-      `table2` varchar(255) DEFAULT NULL,
-      `column1` varchar(40) DEFAULT NULL,
-      `column2` varchar(40) DEFAULT NULL,
-      `db1` varchar(40) DEFAULT NULL,
-      `db2` varchar(40) DEFAULT NULL,
-      `model1` varchar(40) DEFAULT NULL,
-      `model` varchar(64) DEFAULT NULL,
-      `model2` varchar(40) DEFAULT NULL,
-      `remark` varchar(40) DEFAULT NULL,
-      `scantype` int(11) DEFAULT NULL,
-      `status` int(11) DEFAULT NULL,
-      `column1_comment` varchar(128) DEFAULT NULL COMMENT '字段1中文名称',
-      `column2_comment` varchar(128) DEFAULT NULL COMMENT '字段2中文名称',
-      `create_time` datetime DEFAULT NULL COMMENT '创建时间',
-      `edit_time` datetime DEFAULT NULL COMMENT '编辑时间',
-      `incidence` varchar(0) DEFAULT NULL COMMENT '备注表说明',
-      `label` varchar(0) DEFAULT NULL COMMENT '备注表标签',
-      `table1_comment` varchar(128) DEFAULT NULL COMMENT '表1中文名称',
-      `table2_comment` varchar(128) DEFAULT NULL COMMENT '表1中文名称',
-      `matching_degree` float DEFAULT NULL COMMENT '匹配度',
-      PRIMARY KEY (`id`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
-    SET FOREIGN_KEY_CHECKS=0;
-    -- ----------------------------
-    -- Table structure for pf_analysis_status
-    -- ----------------------------
-    DROP TABLE IF EXISTS `pf_analysis_status`;
-    CREATE TABLE `pf_analysis_status` (
-      `linkageid` varchar(255) NOT NULL,
-      `analysisstatus` varchar(255) DEFAULT NULL,
-      `algorithmname` varchar(64) DEFAULT NULL COMMENT '算法名称',
-      `end_time` datetime DEFAULT NULL COMMENT '算法结束时间',
-      `executobj` varchar(64) DEFAULT NULL COMMENT '执行对象',
-      `new_relation_num` int(5) DEFAULT NULL COMMENT '新增关系数量',
-      `relationnum` int(5) DEFAULT NULL COMMENT '总关系数量',
-      `start_time` datetime DEFAULT NULL COMMENT '算法开始时间',
-      PRIMARY KEY (`linkageid`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
-"""
 import pymysql
 import logging
 from logging.handlers import RotatingFileHandler
@@ -70,6 +8,33 @@ import time
 import shutil
 import traceback
 import json
+
+
+def init_logger(model_id):
+    if not os.path.exists(f'./logs/{model_id}'):
+        os.makedirs(f'./logs/{model_id}')
+
+    log_dir = f'./logs/{model_id}'
+    formatter = logging.Formatter('%(asctime)s %(levelname)7s %(filename)8s line %(lineno)4d | %(message)s ',
+                                  datefmt='%Y-%m-%d %H:%M:%S')
+    logger_name = f'{model_id}'
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    handler0 = RotatingFileHandler(log_dir + '/' + logger_name + '-debug.log', maxBytes=10 * 1024 * 1024,
+                                   backupCount=5)
+    handler1 = RotatingFileHandler(log_dir + '/' + logger_name + '-info.log', maxBytes=10 * 1024 * 1024,
+                                   backupCount=5)
+    handler2 = RotatingFileHandler(log_dir + '/' + logger_name + '-err.log', maxBytes=10 * 1024 * 1024,
+                                   backupCount=5)
+    handler0.setLevel(logging.DEBUG)
+    handler1.setLevel(logging.INFO)
+    handler2.setLevel(logging.ERROR)
+    handler0.setFormatter(formatter)
+    handler1.setFormatter(formatter)
+    handler2.setFormatter(formatter)
+    logger.addHandler(handler0)
+    logger.addHandler(handler1)
+    logger.addHandler(handler2)
 
 
 def check_parameters(parameters):
@@ -296,14 +261,13 @@ def res_to_db(output, config, last_rel_res, log):
     return num_new_rel
 
 
-def res_to_db2(output, conn, last_rel_res, log):
+def res_to_db2(output, conn, last_rel_res):
     """Insert `output` results to database.
 
     Args:
         output: A data frame contains relation results.
         conn: A config dict for target database.
         last_rel_res: Table relation of last computation.
-        log: A log object.
 
     Returns:
 
@@ -337,24 +301,22 @@ def res_to_db2(output, conn, last_rel_res, log):
               f'"{_id}", "{model_id}", "{db1}", "{table1}", "{table1comment}", "{column1}", "{column1comment}", ' \
               f' "{db2}", "{table2}","{table2comment}", "{column2}","{column2comment}","{status}", "0", ' \
               f'"{insert_time}", "{insert_time}", "{not_match_ratio}")'
-        try:
-            cr.execute(sql)
-        except Exception as e:
-            log.error(e)
-            continue
+        cr.execute(sql)
     conn.commit()
     cr.close()
     return num_new_rel
 
 
 def roll_back(status_bak, conn, model_id):
-    """This roll back operation is designed for table 'analysis_status' to make sure the 'analysisstatus' field back
-     to its original value if some errors occur in computation.
+    """This roll back operation is designed for table 'analysis_status'
+    to make sure the 'analysisstatus' field back
+    to its original value if some errors occur in computation.
 
     Args:
         status_bak: `False` if it doesn't a re-computation model or original status value(almost it is '2').
         conn: A database connection object from `pymysql` module.
         model_id(str): The model's unique identification.
+
     Returns:
         None
     """
@@ -415,3 +377,17 @@ def get_cache_files(path):
                 without_pks, pks, no_exist, cached_last_update_time
         except IOError:
             return
+
+
+class EmptyLogger:
+    def info(self, string):
+        pass
+
+    def debug(self, string):
+        pass
+
+    def error(self, string):
+        pass
+
+    def warning(self, string):
+        pass

@@ -22,11 +22,9 @@ not_cite_table = None
 # Default is `0`, which means a strict citation relationship.
 sup_out_foreign_key = 0
 
-# Whether use multiprocess to speed calculation, default is not, set it to `1` to turn on.
-# Fast mode may take too much CPU and slow down other program.
-# Multiple processes will be started only when the number of rows is larger than 1e6,
-# even with mode on
-multi_process = 0
+# 是否使用多进程加速计算，0（默认）表示关闭；1表示开启并使用os.cpu_count()个进程；
+# 如果想使用指定数量的进程，直接输入对应的数字。
+multi_process = 2
 
 # Data type list, which contains fields could be extracted
 mysql_type_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT', 'INT']  # mysql and gbase are the same
