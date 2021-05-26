@@ -24,11 +24,11 @@ def init_logger(model_id):
                                    backupCount=5)
     handler1 = RotatingFileHandler(log_dir + '/' + logger_name + '-info.log', maxBytes=10 * 1024 * 1024,
                                    backupCount=5)
-    handler2 = RotatingFileHandler(log_dir + '/' + logger_name + '-err.log', maxBytes=10 * 1024 * 1024,
+    handler2 = RotatingFileHandler(log_dir + '/' + logger_name + '-warn.log', maxBytes=10 * 1024 * 1024,
                                    backupCount=5)
     handler0.setLevel(logging.DEBUG)
     handler1.setLevel(logging.INFO)
-    handler2.setLevel(logging.ERROR)
+    handler2.setLevel(logging.WARNING)
     handler0.setFormatter(formatter)
     handler1.setFormatter(formatter)
     handler2.setFormatter(formatter)
@@ -379,15 +379,20 @@ def get_cache_files(path):
             return
 
 
-class EmptyLogger:
-    def info(self, string):
-        pass
-
-    def debug(self, string):
-        pass
-
-    def error(self, string):
-        pass
-
-    def warning(self, string):
-        pass
+def sub_process_logger(model_id, process_name):
+    log_dir = f'./logs/{model_id}'
+    formatter = logging.Formatter('%(asctime)s %(levelname)7s %(filename)8s line %(lineno)4d | %(message)s ',
+                                  datefmt='%Y-%m-%d %H:%M:%S')
+    logger_name = process_name
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    handler0 = RotatingFileHandler(log_dir + '/' + logger_name + '-debug.log', maxBytes=10 * 1024 * 1024,
+                                   backupCount=5)
+    handler1 = RotatingFileHandler(log_dir + '/' + logger_name + '-warn.log', maxBytes=10 * 1024 * 1024,
+                                   backupCount=5)
+    handler0.setFormatter(formatter)
+    handler1.setLevel(logging.WARNING)
+    handler1.setFormatter(formatter)
+    logger.addHandler(handler1)
+    logger.addHandler(handler0)
+    return logger

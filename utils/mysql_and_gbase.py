@@ -6,7 +6,7 @@ from config import multi_process, mysql_type_list, both_roles, sup_out_foreign_k
 import pandas as pd
 from pybloom import BloomFilter
 import pickle
-from utils.utils import EmptyLogger
+from utils.utils import sub_process_logger
 import multiprocessing
 
 
@@ -78,11 +78,11 @@ def execute(model_id, processes, tables, **kwargs):
         jobs = []
         for i in range(processes):
             if i == processes - 1:
-                p = multiprocessing.Process(target=pre_processing,
+                p = multiprocessing.Process(target=pre_processing, name=f'preprocess-Process-{i}',
                                             args=(model_id, tables[i * batch_size:],
                                                   True, host, port, user, passwd, db, q,))
             else:
-                p = multiprocessing.Process(target=pre_processing,
+                p = multiprocessing.Process(target=pre_processing, name=f'preprocess-Process-{i}',
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
                                                   True, host, port, user, passwd, db, q,))
             jobs.append(p)
@@ -103,11 +103,11 @@ def execute(model_id, processes, tables, **kwargs):
         rel_cols_items = list(rel_cols.items())
         for i in range(processes):
             if i == processes - 1:
-                p = multiprocessing.Process(target=find_rel,
+                p = multiprocessing.Process(target=find_rel, name=f'rel-Process-{i}',
                                             args=(rel_cols_items[i * batch_size:], pks,
                                                   model_id, True, host, port, user, passwd, db, q,))
             else:
-                p = multiprocessing.Process(target=find_rel,
+                p = multiprocessing.Process(target=find_rel, name=f'rel-Process-{i}',
                                             args=(rel_cols_items[i * batch_size: (i + 1) * batch_size], pks,
                                                   model_id, True, host, port, user, passwd, db, q,))
             jobs.append(p)
@@ -131,12 +131,12 @@ def execute(model_id, processes, tables, **kwargs):
         logger.info('未找到关系')
 
 
-def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None):
+def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 模型的唯一标识
-        table: 表名，要么为list，要么为str
+        tables(list): 表名
         multi(bool): 是否采用多进程进行计算
         host(str):
         port(int):
@@ -153,13 +153,12 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
     if not multi:
         logger = logging.getLogger(f'{model_id}')
     else:
-        logger = EmptyLogger()
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""
+        本子进程中需要处理的表总数为{len(tables)}
+        """)
     conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
 
-    if isinstance(table, list):
-        tables = table
-    else:  # str
-        tables = [table]
     sql1 = f'select count(1) from `{db}`.`%s`'
     sql2 = f'select column_name, data_type from information_schema.columns where ' \
            f"table_schema='{db}' and table_name='%s'"
@@ -175,7 +174,9 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
     pks = {}  # 存储表及其可能的主键列表
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
-    for tab in tables:
+    for i in range(len(tables)):
+        tab = tables[i]
+        logger.debug(f'进度：{i+1}/{len(tables)}')
         logger.debug(f'  {tab}：长度校验')
         try:
             cr.execute(sql1 % tab)
@@ -200,9 +201,9 @@ def pre_processing(model_id, table, multi, host, port, user, passwd, db, q=None)
         cr.execute(sql2 % tab)
         field_and_type = cr.fetchall()
         psb_pk, psb_col = [], []
-        for i in range(len(field_and_type)):
-            field_name = field_and_type[i][0]
-            field_type = field_and_type[i][1]
+        for j in range(len(field_and_type)):
+            field_name = field_and_type[j][0]
+            field_type = field_and_type[j][1]
             if field_type.upper() not in mysql_type_list:
                 logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
                 continue
@@ -273,7 +274,8 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     if not multi:
         logger = logging.getLogger(model_id)
     else:
-        logger = EmptyLogger()
+        logger = sub_process_logger(model_id, multiprocessing.current_process().name)
+        logger.info(f"""本子进程所需要处理的表总数共{len(rel_cols)}""")
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
         for i in rel_cols:
@@ -285,7 +287,9 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     results = []
     conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
     logger.info('计算所有关系')
+    i = 1
     for tab in rel_cols_dict:
+        logger.debug(f'进度：{i}/{len(rel_cols_dict)}')
         for col in rel_cols_dict[tab]:
             value = pd.read_sql(sql % (col, tab), conn)
             for pk_tab in pks:
@@ -308,6 +312,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
                                model_id, db,
                                tab, 'table2comment', col, 'column2comment', not_match_ratio]
                         results.append(res)
+        i += 1
     if q:
         q.put(results)
     conn.close()
