@@ -127,8 +127,16 @@ def main(**kwargs):
 
     tar_tables = eval(kwargs['tar_tables']) if eval(kwargs['tar_tables']) else None
 
-    if kwargs['tar_type'].upper() in ['MYSQL', 'GBASE']:
-        from .mysql_and_gbase import run
+    if kwargs['tar_type'].upper() == 'MYSQL':
+        from .mysql import run
+        output = run(model_id, tar_tables, custom_para,
+                     host=kwargs['tar_host'],
+                     port=int(kwargs['tar_port']),
+                     user=kwargs['tar_user'],
+                     passwd=kwargs['tar_passwd'],
+                     db=kwargs['tar_db'])
+    elif kwargs['tar_type'].upper() == 'GBASE':
+        from.gbase import run
         output = run(model_id, tar_tables, custom_para,
                      host=kwargs['tar_host'],
                      port=int(kwargs['tar_port']),
