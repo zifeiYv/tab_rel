@@ -3,6 +3,8 @@
 #       2、仔细核查利用时间戳确定表是否更新的机制与缓存机制
 #       3、添加从源码安装的方式
 #
+import traceback
+
 from .utils import res_to_db2, get_cache_files, col_value_filter, col_name_filter
 import logging
 import time
@@ -43,7 +45,12 @@ def main(**kwargs):
         'db': kwargs['cfg_db']
     }
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    conn = pymysql.connect(**cfg)
+    try:
+        conn = pymysql.connect(**cfg)
+    except pymysql.err.OperationalError:
+        logger.error(traceback.format_exc())
+        logger.error(f'无法连接配置数据库{cfg}')
+        return
     sql = f'REPLACE INTO analysis_status (id, analysis_status, algorithm_name, execute_obj,' \
           f'start_time) values("{model_id}", "1", "{alg_name}", "{execute_obj}", "{start_time}")'
     with conn.cursor() as cr:
@@ -53,10 +60,10 @@ def main(**kwargs):
         conn.commit()
     if not res:
         status_bak = False
-        logger.info('模型首次参与运行，回滚操作时将会删除状态表中的记录。')
+        logger.info('模型首次参与运行')
     else:
         status_bak = res[0]
-        logger.info('模型已经存在运算结果，回滚操作将会把状态值改写为2。')
+        logger.info('模型已经存在运算结果')
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # Step 2 获取用户参数
@@ -148,9 +155,10 @@ def main(**kwargs):
         output = run(model_id, tar_tables, custom_para,
                      host=kwargs['tar_host'],
                      port=int(kwargs['tar_port']),
-                     user=kwargs['user'],
-                     passwd=kwargs['passwd'],
+                     user=kwargs['tar_user'],
+                     passwd=kwargs['tar_passwd'],
                      url=kwargs['tar_url'],
+                     db=kwargs['tar_db']
                      )
     elif kwargs['tar_type'].upper() == 'HIVE':
         pass

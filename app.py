@@ -73,10 +73,8 @@ def find_relation():
     # >>> 以下仅用于Oracle数据库
     try:
         tar_url = db_info['config']['url']
-        tar_multi_schema = db_info['config']['multi_schema']
-        tar_schema = db_info['config']['target_schema']
     except KeyError:
-        tar_url = tar_multi_schema = tar_schema = ''
+        tar_url = ''
     # <<< 以上仅用于Oracle数据库
 
     Popen(['python', 'run.py',
@@ -97,8 +95,8 @@ def find_relation():
            '--tar_port', tar_port,
            '--tar_user', tar_user,
            '--tar_url', tar_url,
-           '--tar_multi_schema', tar_multi_schema,
-           '--tar_schema', tar_schema
+           '--tar_multi_schema', '',
+           '--tar_schema', ''
            ])
 
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})

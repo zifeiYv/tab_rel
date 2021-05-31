@@ -23,12 +23,14 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
         logger.info(f'使用多进程，进程数量为：{processes}')
     user = db_kw['user']
     url = db_kw['url']
+    dsn = url.split('@')[1]
+    db = db_kw['db']
     passwd = db_kw['passwd']
-    conn = cx_Oracle.connect(user, passwd, url)
+    conn = cx_Oracle.connect(user, passwd, dsn)
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
-            sql = f"select table_name from all_tables where owner='{user}'"
+            sql = f"select table_name from all_tables where owner='{db}'"
             cr.execute(sql)
             tables = [i[0] for i in cr.fetchall()]
         conn.close()
