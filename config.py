@@ -24,12 +24,9 @@ sup_out_foreign_key = 0
 
 # 是否使用多进程加速计算，0（默认）表示关闭；1表示开启并使用os.cpu_count()个进程；
 # 如果想使用指定数量的进程，直接输入对应的数字。
-multi_process = 2
+multi_process = 0
 
 # Data type list, which contains fields could be extracted
 mysql_type_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT', 'INT']  # mysql and gbase are the same
 oracle_type_list = ['VARCHAR2', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR2']
 pg_type_list = ['CHARACTER', 'TEXT']
-
-# 是否使用缓存进行计算，在测试时设置为True可能会有用
-use_cache = True

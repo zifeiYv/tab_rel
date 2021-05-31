@@ -3,7 +3,7 @@
 #       2、仔细核查利用时间戳确定表是否更新的机制与缓存机制
 #       3、添加从源码安装的方式
 #
-from .utils import check_connection, roll_back, res_to_db2, get_cache_files, col_value_filter, col_name_filter
+from .utils import res_to_db2, get_cache_files, col_value_filter, col_name_filter
 import logging
 import time
 import pymysql
