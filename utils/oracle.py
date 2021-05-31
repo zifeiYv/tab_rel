@@ -64,12 +64,13 @@ def execute(model_id, processes, tables, **kwargs):
     logger = logging.getLogger(f'{model_id}')
 
     url, user = kwargs['url'], kwargs['user']
+    dsn = url.split('@')[1]
     passwd = kwargs['passwd']
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, tables, False, user,
-                                       passwd, url)
+                                       passwd, dsn)
         output = find_rel(rel_cols, pks, model_id, False,
-                          user, passwd, url)
+                          user, passwd, dsn)
     else:
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
@@ -81,11 +82,11 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size:],
-                                                  True, user, passwd, url, q,))
+                                                  True, user, passwd, dsn, q,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
-                                                  True, user, passwd, url, q,))
+                                                  True, user, passwd, dsn, q,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -104,11 +105,11 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size:], pks,
-                                                  model_id, True, user, passwd, url, q,))
+                                                  model_id, True, user, passwd, dsn, q,))
             else:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size: (i + 1) * batch_size], pks,
-                                                  model_id, True, user, passwd, url, q,))
+                                                  model_id, True, user, passwd, dsn, q,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -130,7 +131,7 @@ def execute(model_id, processes, tables, **kwargs):
         logger.info('未找到关系')
 
 
-def pre_processing(model_id, tables, multi, user, passwd, url, q=None):
+def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
@@ -139,7 +140,7 @@ def pre_processing(model_id, tables, multi, user, passwd, url, q=None):
         multi(bool): 是否采用多进程进行计算
         user(str):
         passwd(str):
-        url(str):
+        dsn(str):
         q: 队列
 
     Returns:
@@ -154,7 +155,7 @@ def pre_processing(model_id, tables, multi, user, passwd, url, q=None):
         logger.info(f"""
                 本子进程中需要处理的表总数为{len(tables)}
                 """)
-    conn = cx_Oracle.connect(user, passwd, url)
+    conn = cx_Oracle.connect(user, passwd, dsn)
 
     sql1 = f'select count(1) from {user}."%s"'
     sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
@@ -246,7 +247,7 @@ def pre_processing(model_id, tables, multi, user, passwd, url, q=None):
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, user, passwd, url, q=None):
+def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, q=None):
     """查找关系。
 
     Args:
@@ -255,7 +256,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, url, q=None):
         user(str):
         passwd(str):
         model_id(str):
-        url(str):
+        dsn(str):
         multi(bool):
         q:
 
@@ -269,7 +270,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, url, q=None):
         logger.info(f"""
                         本子进程中需要处理的表总数为{len(rel_cols)}
                         """)
-    conn = cx_Oracle.connect(user, passwd, url)
+    conn = cx_Oracle.connect(user, passwd, dsn)
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
         for i in rel_cols:
