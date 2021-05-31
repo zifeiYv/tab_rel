@@ -184,9 +184,11 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
             if row_num > 1e8:
                 length_too_long[tab] = row_num
                 logger.debug(f'  {tab}：超长，被过滤')
+                continue
             elif row_num == 0:
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
+                continue
             else:
                 length_normal[tab] = row_num
                 logger.debug(f'  {tab}：长度合格')

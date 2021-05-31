@@ -65,12 +65,13 @@ def execute(model_id, processes, tables, **kwargs):
 
     url, user = kwargs['url'], kwargs['user']
     dsn = url.split('@')[1]
+    db = kwargs['db']
     passwd = kwargs['passwd']
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, tables, False, user,
-                                       passwd, dsn)
+                                       passwd, dsn, db)
         output = find_rel(rel_cols, pks, model_id, False,
-                          user, passwd, dsn)
+                          user, passwd, dsn, db)
     else:
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
@@ -82,11 +83,11 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size:],
-                                                  True, user, passwd, dsn, q,))
+                                                  True, user, passwd, dsn, db, q,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
-                                                  True, user, passwd, dsn, q,))
+                                                  True, user, passwd, dsn, db, q,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -131,7 +132,7 @@ def execute(model_id, processes, tables, **kwargs):
         logger.info('未找到关系')
 
 
-def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
+def pre_processing(model_id, tables, multi, user, passwd, dsn, db, q=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
@@ -141,6 +142,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
         user(str):
         passwd(str):
         dsn(str):
+        db(str):
         q: 队列
 
     Returns:
@@ -157,12 +159,12 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
                 """)
     conn = cx_Oracle.connect(user, passwd, dsn)
 
-    sql1 = f'select count(1) from {user}."%s"'
+    sql1 = f'select count(1) from {db}."%s"'
     sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
-           f"and owner='{user}'"
-    sql3 = f'select count("%s") from {user}."%s"'
-    sql4 = f'select count(distinct "%s") from {user}."%s"'
-    sql5 = f'select count(1) from {user}."%s" where length("%s")=lengthb("%s")'
+           f"and owner='{db}'"
+    sql3 = f'select count("%s") from {db}."%s"'
+    sql4 = f'select count(distinct "%s") from {db}."%s"'
+    sql5 = f'select count(1) from {db}."%s" where length("%s")=lengthb("%s")'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -180,9 +182,11 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
             if row_num > 1e8:
                 length_too_long[tab] = row_num
                 logger.debug(f'  {tab}：超长，被过滤')
+                continue
             elif row_num == 0:
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
+                continue
             else:
                 length_normal[tab] = row_num
                 logger.debug(f'  {tab}：长度合格')
@@ -232,7 +236,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
             if os.path.exists(f'./filters/{model_id}/{user}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
-            value = pd.read_sql(f"select {pk} from {tab}", conn)
+            value = pd.read_sql(f'select "{pk}" from {db}."{tab}"', conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
@@ -247,7 +251,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, q=None):
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, q=None):
+def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
     """查找关系。
 
     Args:
@@ -258,6 +262,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, q=None):
         model_id(str):
         dsn(str):
         multi(bool):
+        db(str):
         q:
 
     Returns:
@@ -278,7 +283,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, q=None):
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select `%s` from `{user}`.`%s` where rownum <= 10000'
+    sql = f'select %s from {db}.%s where rownum <= 10000'
     results = []
     logger.info('计算所有关系')
     for tab in rel_cols_dict:
