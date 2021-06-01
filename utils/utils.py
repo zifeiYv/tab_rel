@@ -37,57 +37,6 @@ def init_logger(model_id):
     logger.addHandler(handler2)
 
 
-def check_parameters(parameters):
-    """Check the post parameters is valid or not before following calculation.
-
-    Args:
-        parameters(dict): Parameter in json-format(dict object in python).
-
-    Returns:
-        True or wrong messages.
-    """
-    if 'modelId1' not in parameters:
-        return '`modelId1` is required while not included.'
-    elif not isinstance(parameters['modelId1'], str):
-        return 'The value type of `modelId1` must be string.'
-    elif 'modelId2' not in parameters:
-        return '`modelId2` is required while not included.'
-    elif not isinstance(parameters['modelId2'], str):
-        return 'The value type of `modelId2` must be string.'
-    elif 'configMap' not in parameters:
-        return '`configMap` is required while not included.'
-    elif not isinstance(parameters['configMap'], dict):
-        return 'The value type of `configMap` must be dict.'
-    elif not isinstance(parameters['algorithmName'], str):
-        return 'The value type of `algorithmName` must be str'
-    elif not isinstance(parameters['executObj'], str):
-        return 'The value type of `executObj` must be str'
-    else:
-        for i in ['host', 'port', 'user', 'password', 'db']:
-            if i not in parameters['configMap']:
-                return f'`{i}` is required in `configMap` while not included.'
-        return True
-
-
-def check_connection(config):
-    """The computation results are saved in a specific table of a MySQL database. So the
-    connection to database must be worked before following calculation.
-
-    Args:
-        config(dict): A dict that contains all information for database connection.
-
-    Returns:
-        A `pymysql.connections.Connection` object or error messages.
-    """
-    logger = logging.getLogger('92ae9b17770041ae85e563cf95c9cf56')
-    try:
-        connection = pymysql.connect(**config)
-        return connection, ''
-    except Exception as e:
-        logger.error(traceback.format_exc())
-        return e, "Cannot connect to config database"
-
-
 def get_logger(logger_name):
     """初始化一个日志记录器，无返回值。
 
@@ -208,60 +157,7 @@ def col_value_filter(df, use_str_len, inf_str_len, inf_dup_ratio):
             return df
 
 
-def res_to_db(output, config, last_rel_res, log):
-    """Insert `output` results to database.
-
-    Args:
-        output: A data frame contains relation results.
-        config(dict): A config dict for target database.
-        last_rel_res: Table relation of last computation.
-        log: A log object.
-
-    Returns:
-
-    """
-    conn = pymysql.connect(**config)
-    cr = conn.cursor()
-    num_new_rel = 0
-    for i in range(output.shape[0]):
-        _id = str(uuid.uuid1()).replace('-', '')
-        line = output.iloc[i]
-        model_id = line['model1']
-        db1 = line['db1']
-        table1 = line['table1']
-        table1comment = line['table1comment'].replace("\'", "\\'").replace("\"", "\\")
-        column1 = line['column1']
-        column1comment = line['column1comment'].replace("\'", "\\'").replace("\"", "\\")
-        db2 = line['db2']
-        table2 = line['table2']
-        table2comment = line['table2comment'].replace("\'", "\\'").replace("\"", "\\")
-        column2 = line['column2']
-        column2comment = line['column2comment'].replace("\'", "\\'").replace("\"", "\\")
-        not_match_ratio = line['matching_degree']
-        if (db1 + table1 + column1 + db2 + table2 + column2) in last_rel_res:
-            status = 0
-        else:
-            status = 1
-            num_new_rel += 1
-        insert_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-        sql = f'insert into analysis_results(`id`, `model`, `db1`, `table1`, `table1_comment`, ' \
-              f'`column1`, `column1_comment`, `db2`, `table2`, `table2_comment`, `column2`, ' \
-              f'`column2_comment`, `status`, `scantype`,`create_time`,`edit_time`, `matching_degree`) values (' \
-              f'"{_id}", "{model_id}", "{db1}", "{table1}", "{table1comment}", "{column1}", "{column1comment}", ' \
-              f' "{db2}", "{table2}","{table2comment}", "{column2}","{column2comment}","{status}", "0", ' \
-              f'"{insert_time}", "{insert_time}", "{not_match_ratio}")'
-        try:
-            cr.execute(sql)
-        except Exception as e:
-            log.error(e)
-            continue
-    conn.commit()
-    cr.close()
-    conn.close()
-    return num_new_rel
-
-
-def res_to_db2(output, conn, last_rel_res):
+def save_to_db(output, conn, last_rel_res):
     """Insert `output` results to database.
 
     Args:
@@ -307,27 +203,6 @@ def res_to_db2(output, conn, last_rel_res):
     return num_new_rel
 
 
-def roll_back(status_bak, conn, model_id):
-    """This roll back operation is designed for table 'analysis_status'
-    to make sure the 'analysisstatus' field back
-    to its original value if some errors occur in computation.
-
-    Args:
-        status_bak: `False` if it doesn't a re-computation model or original status value(almost it is '2').
-        conn: A database connection object from `pymysql` module.
-        model_id(str): The model's unique identification.
-
-    Returns:
-        None
-    """
-    with conn.cursor() as cr:
-        if not status_bak:  # A first-computation model and delete its record directly.
-            cr.execute(f'delete from analysis_status where id="{model_id}"')
-        else:  # A re-computation model.
-            cr.execute(f'update analysis_status set analysis_status="{status_bak}" where id="{model_id}"')
-        conn.commit()
-
-
 def del_cache_files(post_json):
     """Delete cached files, called when updating parameters"""
     db_name = post_json['db']
@@ -342,41 +217,6 @@ def del_cache_files(post_json):
         print(e)
         return 0
     return 1
-
-
-def get_cache_files(path):
-    if not os.path.exists(f'./table_attr/{path}'):
-        os.makedirs(f'./table_attr/{path}')
-        return
-    else:
-        try:
-            with open(f'./table_attr/{path}/rel_cols.json') as f:
-                cached_cols = json.load(f)
-            with open(f'./table_attr/{path}/length_normal.json') as f:
-                cached_length = json.load(f)
-            with open(f'./table_attr/{path}/length_too_long.json') as f:
-                cached_length_long = json.load(f)
-            with open(f'./table_attr/{path}/length_zero.json') as f:
-                cached_length_zero = json.load(f)
-            with open(f'./table_attr/{path}/without_pks.json') as f:
-                cached_no_pks = json.load(f)
-            with open(f'./table_attr/{path}/pks.json') as f:
-                cached_pks = json.load(f)
-            with open(f'./table_attr/{path}/no_exist.json') as f:
-                cached_no_exist = json.load(f)
-            with open(f'./table_attr/{path}/last_update_time.json') as f:
-                cached_last_update_time = json.load(f)
-            rel_cols = cached_cols.copy()
-            length_normal = cached_length.copy()
-            length_too_long = cached_length_long.copy()
-            length_zero = cached_length_zero.copy()
-            without_pks = cached_no_pks.copy()
-            pks = cached_pks.copy()
-            no_exist = cached_no_exist.copy()
-            return rel_cols, length_normal, length_too_long, length_zero, \
-                without_pks, pks, no_exist, cached_last_update_time
-        except IOError:
-            return
 
 
 def sub_process_logger(model_id, process_name):

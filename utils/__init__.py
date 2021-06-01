@@ -5,7 +5,7 @@
 #
 import traceback
 
-from .utils import res_to_db2, get_cache_files, col_value_filter, col_name_filter
+from .utils import save_to_db, col_value_filter, col_name_filter
 import logging
 import time
 import pymysql
@@ -180,7 +180,7 @@ def main(**kwargs):
         # 删除旧版结果
         with conn.cursor() as cr:
             cr.execute(f'delete from analysis_results where model="{model_id}" and `scantype`=0')
-        num_new_rel = res_to_db2(output, conn, last_rel_res)
+        num_new_rel = save_to_db(output, conn, last_rel_res)
         num_rel = len(output)
 
         end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
