@@ -130,6 +130,7 @@ def execute(model_id, processes, tables, **kwargs):
         return df
     else:
         logger.info('未找到关系')
+        return pd.DataFrame(columns=columns, data=[])
 
 
 def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None):
@@ -255,7 +256,7 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
             if os.path.exists(f'./filters/{model_id}/{db}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
-            value = pd.read_sql(f"select {pk} from {tab}", conn)
+            value = pd.read_sql(f"select `{pk}` from `{tab}`", conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)

@@ -2,7 +2,7 @@
 url = '/all_tables_relation/'
 
 # 一个字段是否可以既作为主键，又作为外键
-both_roles = False
+both_roles = True
 
 # A string combined by some table names and separated by ',',
 # used to declare tables that are not allowed to

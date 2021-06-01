@@ -130,6 +130,7 @@ def execute(model_id, processes, tables, **kwargs):
         return df
     else:
         logger.info('未找到关系')
+        return pd.DataFrame(columns=columns, data=[])
 
 
 def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None):

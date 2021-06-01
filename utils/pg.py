@@ -31,7 +31,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
-            sql = f'select tablename from pg_tables where schemaname="{db}"'
+            sql = "select tablename from pg_tables where schemaname='public'"
             cr.execute(sql)
             tables = [i[0] for i in cr.fetchall()]
         conn.close()
@@ -128,6 +128,7 @@ def execute(model_id, processes, tables, **kwargs):
         return df
     else:
         logger.info('未找到关系')
+        return pd.DataFrame(columns=columns, data=[])
 
 
 def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None):
@@ -158,15 +159,13 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
                     """)
     conn = psycopg2.connect(host=host, port=port, user=user, password=passwd, database=db)
 
-    sql1 = f'select count(1) from {db}.%s'
-    sql2 = f'select a.attname as name, substring(format_type(a.atttypid, a.atttypmod) from ' \
-           f'"[a-zA-Z]*") as ' \
-           f'type from pg_class as c, pg_attribute as a, pg_namespace as p where ' \
-           f'c.relnamespace=p.oid ' \
-           f'and c.relname="%s" and a.attrelid=c.oid and a.attnum > 0 and p.nspname="{db}"'
-    sql3 = f'select count("%s") from {db}.%s'
-    sql4 = f'select count(distinct "%s") from {db}.%s'
-    sql5 = f'select count(1) from {db}.%s where length("%s")=("%s")'
+    sql1 = 'select count(1) from public."%s"'
+    sql2 = "select column_name, data_type from information_schema.columns where table_schema='public' and " \
+           "table_name='%s'"
+    sql3 = f'select count("%s") from public."%s"'
+    sql4 = f'select count(distinct "%s") from public."%s"'
+    # 按字节长度与按字符长度相等
+    sql5 = f'select count(1) from public."%s" where length("%s")=octet_length("%s")'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -204,16 +203,19 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
         for i in range(len(field_and_type)):
             field_name = field_and_type[i][0]
             field_type = field_and_type[i][1]
-            if field_type.upper() not in mysql_type_list:
-                logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
-                continue
+            # if field_type.upper() not in mysql_type_list:
+            #     logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
+            #     continue
             cr.execute(sql3 % (field_name, tab))
             num1 = cr.fetchone()[0]
             if num1 == row_num:
                 cr.execute(sql4 % (field_name, tab))
                 num2 = cr.fetchone()[0]
-                cr.execute(sql5 % (tab, field_name, field_name))
-                num3 = cr.fetchone()[0]
+                if field_type != 'character varying':
+                    num3 = num2
+                else:
+                    cr.execute(sql5 % (tab, field_name, field_name))
+                    num3 = cr.fetchone()[0]
                 if num1 == num2 and num2 == num3:
                     psb_pk.append(field_name)
                     if both_roles:
@@ -238,7 +240,7 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
             if os.path.exists(f'./filters/{model_id}/{db}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
-            value = pd.read_sql(f"select {pk} from {tab}", conn)
+            value = pd.read_sql(f'select "{pk}" from "{tab}"', conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
@@ -285,9 +287,9 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db, q=Non
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select %s from {db}.%s limit 10000'
+    sql = f'select "%s" from public."%s" limit 10000'
     results = []
-    conn = psycopg2.connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    conn = psycopg2.connect(host=host, port=port, user=user, password=passwd, database=db)
     logger.info('计算所有关系')
     for tab in rel_cols_dict:
         for col in rel_cols_dict[tab]:
