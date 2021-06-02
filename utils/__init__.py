@@ -161,7 +161,14 @@ def main(**kwargs):
                      db=kwargs['tar_db']
                      )
     elif kwargs['tar_type'].upper() == 'HIVE':
-        pass
+        from .hive import run
+        output = run(model_id, tar_tables, custom_para,
+                     host=kwargs['tar_host'],
+                     port=int(kwargs['tar_port']),
+                     user=kwargs['tar_user'],
+                     passwd=kwargs['tar_passwd'],
+                     url=kwargs['tar_url']
+                     )
     elif kwargs['tar_type'].upper() == 'POSTGRESQL':
         from .pg import run
         output = run(model_id, tar_tables, custom_para,

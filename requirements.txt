@@ -5,6 +5,7 @@ cx-Oracle==8.1.0
 Flask==1.1.2
 gunicorn==20.1.0
 itsdangerous==1.1.0
+impyla==0.16.3
 Jinja2==2.11.3
 MarkupSafe==1.1.1
 numpy==1.20.2

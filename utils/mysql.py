@@ -226,6 +226,7 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db, q=None
                 try:
                     cr.execute(sql4 % (field_name, tab))
                     num2 = cr.fetchone()[0]
+                    # mysql可以对decimal、int类型的字段使用length和char_length函数
                     cr.execute(sql5 % (tab, field_name, field_name))
                     num3 = cr.fetchone()[0]
                 except pymysql.err.InternalError:

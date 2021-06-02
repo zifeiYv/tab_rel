@@ -65,7 +65,7 @@ def find_relation():
         tar_tables = str(db_info['tables'])
     except KeyError:
         tar_tables = '[]'
-    tar_db = db_info['config']['db']
+    tar_db = db_info['config']['db'] if db_info['config']['db'] else ''
     tar_host = db_info['config']['host']
     tar_passwd = db_info['config']['password']
     tar_port = str(db_info['config']['port'])
