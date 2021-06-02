@@ -25,7 +25,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     host = db_kw['host']
     port = db_kw['port']
     user = db_kw['user']
-    password = db_kw['password']
+    password = db_kw['passwd']
     database = db_kw['url'].split('/')[-1]
     conn = connect(host=host, port=port, user=user, password=password, database=database,
                    auth_mechanism='PLAIN')
@@ -66,7 +66,7 @@ def execute(model_id, processes, tables, **kwargs):
     logger = logging.getLogger(f'{model_id}')
 
     host, port, user = kwargs['host'], int(kwargs['port']), kwargs['user']
-    password, database = kwargs['password'], kwargs['url'].split('/')[-1]
+    password, database = kwargs['passwd'], kwargs['url'].split('/')[-1]
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, tables, False, host,
                                        port, user, password, database)
