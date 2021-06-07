@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
-# todo: 1、增加支持hive的逻辑
-#       2、仔细核查利用时间戳确定表是否更新的机制与缓存机制
-#       3、添加从源码安装的方式
-#
 import traceback
 
 from .utils import save_to_db, col_value_filter, col_name_filter
@@ -84,7 +80,7 @@ def main(**kwargs):
                 inf_dup_ratio = res[2] if res[2] else 0.4
                 inf_str_len = res[3] if res[3] else 3
                 inf_tab_len = res[4] if res[4] else 10
-                tables1 = list(res[5].split(',')) if res[5] else []
+                # tables1 = list(res[5].split(',')) if res[5] else []
             else:
                 logger.info('当前未指定参数，将采用默认值。')
                 use_str_len = '0'
@@ -92,7 +88,7 @@ def main(**kwargs):
                 inf_dup_ratio = 0.4
                 inf_str_len = 3
                 inf_tab_len = 10
-                tables1 = []
+                # tables1 = []
         except:
             logger.warning('获取参数的SQL执行错误。')
             use_str_len = '0'
@@ -100,7 +96,7 @@ def main(**kwargs):
             inf_dup_ratio = 0.4
             inf_str_len = 3
             inf_tab_len = 10
-            tables1 = []
+            # tables1 = []
         # Merge custom parameters to a tuple
         custom_para = (use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len)
     logger.info('完成参数获取')
@@ -178,24 +174,26 @@ def main(**kwargs):
                      passwd=kwargs['tar_passwd'],
                      db=kwargs['tar_db'])
     else:
-        # todo
-        pass
+        output = None
 
-    if output.empty:
-        logger.info('结果为空')
+    if output is None:
+        logger.warning('不支持的数据库类型')
     else:
-        # 删除旧版结果
-        with conn.cursor() as cr:
-            cr.execute(f'delete from analysis_results where model="{model_id}" and `scantype`=0')
-        num_new_rel = save_to_db(output, conn, last_rel_res)
-        num_rel = len(output)
+        if output.empty:
+            logger.info('结果为空')
+        else:
+            # 删除旧版结果
+            with conn.cursor() as cr:
+                cr.execute(f'delete from analysis_results where model="{model_id}" and `scantype`=0')
+            num_new_rel = save_to_db(output, conn, last_rel_res)
+            num_rel = len(output)
 
-        end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        sql = f'update analysis_status set analysis_status="2", relation_num={num_rel}, ' \
-              f'new_relation_num={num_new_rel},' \
-              f'end_time="{end_time}" where id="{model_id}"'
-        with conn.cursor() as cr:
-            cr.execute(sql)
-            conn.commit()
+            end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            sql = f'update analysis_status set analysis_status="2", relation_num={num_rel}, ' \
+                  f'new_relation_num={num_new_rel},' \
+                  f'end_time="{end_time}" where id="{model_id}"'
+            with conn.cursor() as cr:
+                cr.execute(sql)
+                conn.commit()
     logging.info(f'计算完成')
     conn.close()
