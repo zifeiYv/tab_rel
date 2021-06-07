@@ -46,3 +46,6 @@ gunicorn -c gunicorn_config.py app:app
 ```
 
 如果要实现对进程的动态监控，推荐使用`supervisor`，使用方法参考[这里](https://blog.csdn.net/SunJW_2017/article/details/114533853) 。
+
+# 4. 本地测试
+想要执行本地测试，打开`test.py`修改对应的数据源信息，然后执行`python test.py`。
