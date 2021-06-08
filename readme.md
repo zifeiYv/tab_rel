@@ -30,13 +30,16 @@ source ~/.bashrc
 
 **注意：**
 
-如果无网络环境下进行配置环境，推荐以下两种做法：
+1. 如果在无网络环境下进行配置，在代码根目录执行`python setup.py`即可自动安装所有依赖。
 
-1. 在虚拟机中创建与目标服务器相同的操作系统，按照上述步骤安装conda，然后利用conda创建一个虚拟环境，在虚拟环境中安装好对应的依赖包，最后将整个虚拟环境拷贝到目标服务器上。
+~~如果无网络环境下进行配置环境，推荐以下两种做法：~~
 
-2. 利用`pip`将待安装的包编译成whl文件，然后将全部文件拷贝至目标服务器进行安装，参考[这里](https://blog.csdn.net/SunJW_2017/article/details/103222205) 。
+~~1. 在虚拟机中创建与目标服务器相同的操作系统，按照上述步骤安装conda，然后利用conda创建一个虚拟环境，在虚拟环境中安装好对应的依赖包，最后将整个虚拟环境拷贝到目标服务器上。~~
 
-3. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
+~~2. 利用`pip`将待安装的包编译成whl文件，然后将全部文件拷贝至目标服务器进行安装，参考[这里](https://blog.csdn.net/SunJW_2017/article/details/103222205) 。~~
+
+2. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，下载地址在[这里](https://www.oracle.
+   com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
 
 # 3. 服务启动
 
