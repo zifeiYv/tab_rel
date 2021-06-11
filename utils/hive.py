@@ -105,6 +105,10 @@ def execute(model_id, processes, tables, **kwargs):
         q = multiprocessing.Queue()
         jobs = []
         rel_cols_items = list(rel_cols.items())
+        if not len(rel_cols_items) % processes:
+            batch_size = int(len(rel_cols_items) / processes)
+        else:
+            batch_size = int(len(rel_cols_items) / processes) + 1
         for i in range(processes):
             if i == processes - 1:
                 p = multiprocessing.Process(target=find_rel, name=f'rel-Process-{i}',
