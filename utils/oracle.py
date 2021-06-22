@@ -8,9 +8,22 @@ from pybloom import BloomFilter
 import pickle
 from utils.utils import sub_process_logger
 import multiprocessing
+import json
+from .utils import col_name_filter, col_value_filter
 
 
 def run(model_id, tar_tables=None, custom_para=None, **db_kw):
+    """根据指定的MySQL数据源进行关系发现的程序的主入口。
+
+    Args:
+        model_id(str): 当前融合任务的唯一标识
+        tar_tables(list): 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
+        custom_para(tuple): 用户配置的参数组成的元组
+        **db_kw: 目标数据源的相关参数
+
+    Returns:
+
+    """
     logger = logging.getLogger(f'{model_id}')
     if not multi_process:
         logger.info('使用单进程')
@@ -45,23 +58,29 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if multi_process:
         if len(tables) < 150:
             logger.warning(f'表数较少（{len(tables)}），启用多进程可能效果不佳')
-    df = execute(model_id, processes, tables, **db_kw)
+    df = execute(model_id, processes, tables, custom_para, **db_kw)
     return df
 
 
-def execute(model_id, processes, tables, **kwargs):
+def execute(model_id, processes, tables, custom_para=None, **kwargs):
     """执行函数。
 
     Args:
-        model_id(str): 模型的唯一标识
-        processes: 进程数量
-        tables: 所有待计算的表名
-        **kwargs:
+        model_id(str): 当前融合任务的唯一标识
+        processes(int): 进程数量
+        tables(list): 所有待计算的表名
+        custom_para(tuple): 用户配置的参数组成的元组
+        **kwargs: 目标数据源的相关参数
 
     Returns:
 
     """
     logger = logging.getLogger(f'{model_id}')
+    use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len = custom_para
+    use_str_len = int(use_str_len)
+    inf_dup_ratio = float(inf_dup_ratio)
+    inf_str_len = int(inf_str_len)
+    inf_tab_len = int(inf_tab_len)
 
     url, user = kwargs['url'], kwargs['user']
     dsn = url.split('@')[1]
@@ -69,9 +88,9 @@ def execute(model_id, processes, tables, **kwargs):
     passwd = kwargs['passwd']
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, tables, False, user,
-                                       passwd, dsn, db)
+                                       passwd, dsn, db, data_cleansing, inf_tab_len)
         output = find_rel(rel_cols, pks, model_id, False,
-                          user, passwd, dsn, db)
+                          user, passwd, dsn, db, use_str_len, inf_dup_ratio, inf_str_len)
     else:
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
@@ -83,11 +102,13 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size:],
-                                                  True, user, passwd, dsn, db, q,))
+                                                  True, user, passwd, dsn, db,
+                                                  data_cleansing, inf_tab_len,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
-                                                  True, user, passwd, dsn, db, q,))
+                                                  True, user, passwd, dsn, db,
+                                                  data_cleansing, inf_tab_len,))
             jobs.append(p)
             p.start()
         for p in jobs:
@@ -110,20 +131,24 @@ def execute(model_id, processes, tables, **kwargs):
             if i == processes - 1:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size:], pks,
-                                                  model_id, True, user, passwd, dsn, q,))
+                                                  model_id, True, user, passwd, dsn,
+                                                  use_str_len, inf_dup_ratio, inf_str_len,))
             else:
                 p = multiprocessing.Process(target=find_rel,
                                             args=(rel_cols_items[i * batch_size: (i + 1) * batch_size], pks,
-                                                  model_id, True, user, passwd, dsn, q,))
+                                                  model_id, True, user, passwd, dsn,
+                                                  use_str_len, inf_dup_ratio, inf_str_len,))
             jobs.append(p)
             p.start()
         for p in jobs:
             p.join()
-            p.close()
+            logger.info(f'{p.name} join 完成')
         output = []
-        for _ in jobs:
-            res = q.get()
-            output.extend(res)
+        file_list = [i for i in os.listdir(f'./caches/{model_id}') if i.startswith('rel-Process')]
+        for file in file_list:
+            with open(f'./caches/{model_id}/{file}') as f:
+                res = json.load(f)
+            output.extend(res['rel'])
 
     columns = ['model1', 'db1', 'table1', 'table1comment', 'column1',
                'column1comment', 'model2', 'db2', 'table2', 'table2comment',
@@ -137,24 +162,28 @@ def execute(model_id, processes, tables, **kwargs):
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, tables, multi, user, passwd, dsn, db, q=None):
+def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
+                   data_cleansing=None, inf_tab_len=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 模型的唯一标识
         tables: 表名，要么为list，要么为str
         multi(bool): 是否采用多进程进行计算
-        user(str):
-        passwd(str):
-        dsn(str):
-        db(str):
-        q: 队列
+        user(str): 目标数据库的用户名
+        passwd(str): 目标数据库的密码
+        dsn(str): 目标数据库的dsn
+        db(str): 目标数据源的数据库名称
+        data_cleansing(dict): 包含过滤规则的字典
+        inf_tab_len(int): 表长度下界
 
     Returns:
         rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
         pks: 一个字典，键为表名，值为该张表可能作为主键的字段列表
 
     """
+    if inf_tab_len is None:
+        inf_tab_len = 0
     if not multi:
         logger = logging.getLogger(f'{model_id}')
     else:
@@ -192,6 +221,9 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db, q=None):
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
                 continue
+            elif row_num < int(inf_tab_len):
+                logger.debug(f'  {tab}表的长度低于设置的阈值（{inf_tab_len}）')
+                continue
             else:
                 length_normal[tab] = row_num
                 logger.debug(f'  {tab}：长度合格')
@@ -207,6 +239,9 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db, q=None):
         for i in range(len(field_and_type)):
             field_name = field_and_type[i][0]
             field_type = field_and_type[i][1]
+            if not col_name_filter(tab, field_name, data_cleansing):
+                logger.debug(f'    {field_name}不符合保留规则，被过滤')
+                continue
             if field_type.upper() not in oracle_type_list:
                 logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{oracle_type_list}')
                 continue
@@ -251,12 +286,18 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db, q=None):
     cr.close()
     conn.close()
     logger.info('完成')
-    if q:
-        q.put((rel_cols, pks))
+    if multi:
+        cache_file_name = multiprocessing.current_process().name + '.json'
+        if not os.path.exists(f'./caches/{model_id}'):
+            os.makedirs(f'./caches/{model_id}')
+        res = {'rel_cols': rel_cols, 'pks': pks}
+        with open(f'./caches/{model_id}/{cache_file_name}', 'w') as f:
+            json.dump(res, f)
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
+def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db,
+             use_str_len=None, inf_dup_ratio=None, inf_str_len=None):
     """查找关系。
 
     Args:
@@ -268,11 +309,17 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
         dsn(str):
         multi(bool):
         db(str):
-        q:
+        use_str_len(int): 以整型代替布尔值，表示是否使用字符平均长度来过滤
+        inf_dup_ratio(float): 去重后的列表长度占原列表长度的比例
+        inf_str_len(int): 将值转化为字符后的平均长度，仅当use_str_len生效时生效
 
     Returns:
 
     """
+    use_str_len = 0 if use_str_len is None else use_str_len
+    inf_dup_ratio = 0.0 if inf_dup_ratio is None else inf_dup_ratio
+    inf_str_len = 0 if inf_str_len is None else inf_str_len
+
     if not multi:
         logger = logging.getLogger(model_id)
     else:
@@ -291,9 +338,15 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
     sql = f'select %s from {db}.%s where rownum <= 10000'
     results = []
     logger.info('计算所有关系')
+    i = 1
     for tab in rel_cols_dict:
+        logger.debug(f'进度：{i}/{len(rel_cols_dict)}')
         for col in rel_cols_dict[tab]:
             value = pd.read_sql(sql % (col, tab), conn)
+            df = col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio))
+            if (isinstance(df, pd.DataFrame) and df.empty) or (df is None):
+                logger.debug(f'{tab}表的{col}字段值未通过内容校验')
+                continue
             for pk_tab in pks:
                 if pk_tab == tab:
                     continue
@@ -302,7 +355,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
                         bf = pickle.load(f)
                     flag = 1
                     num_not_in_bf = 0
-                    for k in value[col]:
+                    for k in df[col]:
                         if k not in bf:
                             num_not_in_bf += 1
                         if num_not_in_bf / 10000 > sup_out_foreign_key:
@@ -314,8 +367,12 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db, q=None):
                                model_id, user,
                                tab, 'table2comment', col, 'column2comment', not_match_ratio]
                         results.append(res)
-    if q:
-        q.put(results)
+        i += 1
+    if multi:
+        file_name = multiprocessing.current_process().name + '.json'
+        res = {'rel': results}
+        with open(f'caches/{model_id}/{file_name}', 'w') as f:
+            json.dump(res, f)
     conn.close()
     logger.info('完成')
     return results

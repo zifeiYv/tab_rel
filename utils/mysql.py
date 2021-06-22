@@ -57,7 +57,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     if multi_process:
         if len(tables) < 150:
             logger.warning(f'表数较少（{len(tables)}），启用多进程可能效果不佳')
-    df = execute(model_id, processes, tables,custom_para, **db_kw)
+    df = execute(model_id, processes, tables, custom_para, **db_kw)
     return df
 
 
@@ -65,7 +65,7 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
     """执行函数。
 
     Args:
-        model_id(str): 模型的唯一标识
+        model_id(str): 当前融合任务的唯一标识
         processes(int): 进程数量
         tables(list): 所有待计算的表名
         custom_para(tuple): 用户配置的参数组成的元组
