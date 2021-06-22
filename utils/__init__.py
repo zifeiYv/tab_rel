@@ -93,13 +93,21 @@ def main(**kwargs):
             logger.warning('获取参数的SQL执行错误。')
             use_str_len = '0'
             data_cleansing = {'_': ['EXT_', 'ext_']}
-            inf_dup_ratio = 0.4
-            inf_str_len = 3
-            inf_tab_len = 10
+            inf_dup_ratio = 0.0
+            inf_str_len = 0
+            inf_tab_len = 0
             # tables1 = []
         # Merge custom parameters to a tuple
         custom_para = (use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len)
     logger.info('完成参数获取')
+    logger.info(f"""
+    使用的参数为：
+    use_str_len:    {use_str_len},
+    data_cleansing: {data_cleansing},
+    inf_dup_ratio:  {inf_dup_ratio},
+    inf_str_len:    {inf_str_len},
+    inf_tab_len:    {inf_tab_len}
+    """)
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # Step 3 开始计算
@@ -195,5 +203,5 @@ def main(**kwargs):
             with conn.cursor() as cr:
                 cr.execute(sql)
                 conn.commit()
-    logging.info(f'计算完成')
+    logger.info(f'计算完成')
     conn.close()
