@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
-import pymysql
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 import uuid
 import time
-import shutil
-import traceback
-import json
 
 
 def init_logger(model_id):
@@ -37,31 +33,12 @@ def init_logger(model_id):
     logger.addHandler(handler2)
 
 
-def get_logger(logger_name):
-    """初始化一个日志记录器，无返回值。
-
-    只需要在开始执行函数前进行初始化，在整个函数执行过程中可以直接根据logger_name从标准库获取logger对象
-    进行日志记录即可。
-    """
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-    handler1 = RotatingFileHandler('./logs/'+logger_name+'-info.log', maxBytes=5 * 1024 * 1024, backupCount=5)
-    handler2 = RotatingFileHandler('./logs/'+logger_name+'-err.log', maxBytes=5 * 1024 * 1024, backupCount=5)
-    handler2.setLevel(logging.ERROR)
-    formatter = logging.Formatter('%(asctime)s %(levelname)7s %(filename)8s line %(lineno)4d | %(message)s ',
-                                  datefmt='%Y-%m-%d %H:%M:%S')
-    handler1.setFormatter(formatter)
-    handler2.setFormatter(formatter)
-    logger.addHandler(handler1)
-    logger.addHandler(handler2)
-
-
 def filter_str(col, data_cleansing):
-    """Decide whether `col` is useful basing on `data_cleansing`.
+    """根据data_cleansing来判断col是否应该被保留。
 
     Args:
-        col(str): Column name.
-        data_cleansing(dict): A dict that contains filter rules.
+        col(str): 字段名
+        data_cleansing(dict): 过滤规则
 
     Returns:
         col or None.
@@ -82,26 +59,27 @@ def filter_str(col, data_cleansing):
 
 
 def col_name_filter(tab, col, data_cleansing=None):
-    """Decide whether the `col` in `tab` is useful basing on `data_cleansing`.
-    The format of dict `data_cleansing` is defined as follow:
+    """根据data_cleansing判断tab表的col字段是否应该被保留。
+
+    data_cleansing的格式如下
         {
             "_": ["str1", "str2", ...],
             "tab1": ["tab1_str1", "tab1_str2", ...],
             ...
         }
-    The values of key `_` is used for all tables and values of `tab*`(a specific table name) is used only for that
-    table.
-    All strings in values are either end with "%" or not. A string is ends with "%" means that `col` will be filtered
-    only if `col`` is exactly the same with characters before "%"; otherwise, `col` will be filtered if it starts
-    with that string.
+
+    键"_"对应的值（规则）适用于所有表；其他的键对应的值（规则）只适用于对应表。
+
+    所有的值（规则）均是字符串，并且只有两种格式：以"%"结尾，或不以"%"结尾。以"%"结尾表示col必须与该规则完全一致
+    才会被过滤；否则，只要col以该规则字符串开头即被过滤。
 
     Notes:
-        Key "_" must exist.
+        键"_"及其对应的规则必须存在。
 
     Args:
-        tab(str): Table name.
-        col(str): Column name.
-        data_cleansing(dict): A dict that contains filter rules.
+        tab(str): 表名
+        col(str): 字段名
+        data_cleansing(dict): 规律规则
 
     Returns:
         col or None.
@@ -129,14 +107,13 @@ def col_name_filter(tab, col, data_cleansing=None):
 
 
 def col_value_filter(df, use_str_len, inf_str_len, inf_dup_ratio):
-    """Decide whether the value in `df` is useful basing on the users' config.
+    """根据用户自定义参数来判断df中的数据是否被利用。
 
     Args:
         df: A data frame.
-        use_str_len(bool or int): Boolean value, whether the average length of each value, treated as string, is
-            used to filter `df`.
-        inf_str_len(int): The minimum value of average length of string-ed value.
-        inf_dup_ratio: The length of duplicated `df`
+        use_str_len(bool or int): 是否需要将df中的每个值视为字符串，然后计算其平均字符长度
+        inf_str_len(int): 当df被保留时，其中的值的平均字符长度的最小值
+        inf_dup_ratio(float): 当df被保留时，其中的无重复的值占总数的最小比例
 
     Returns:
 
@@ -158,16 +135,7 @@ def col_value_filter(df, use_str_len, inf_str_len, inf_dup_ratio):
 
 
 def save_to_db(output, conn, last_rel_res):
-    """Insert `output` results to database.
-
-    Args:
-        output: A data frame contains relation results.
-        conn: A config dict for target database.
-        last_rel_res: Table relation of last computation.
-
-    Returns:
-
-    """
+    """将output存入数据库"""
     cr = conn.cursor()
     num_new_rel = 0
     for i in range(output.shape[0]):
@@ -201,22 +169,6 @@ def save_to_db(output, conn, last_rel_res):
     conn.commit()
     cr.close()
     return num_new_rel
-
-
-def del_cache_files(post_json):
-    """Delete cached files, called when updating parameters"""
-    db_name = post_json['db']
-    filter_path = f'./filters/{db_name}'
-    attr_path = f'./table_attr/{db_name}'
-    try:
-        if os.path.isdir(filter_path):
-            shutil.rmtree(filter_path)
-        if os.path.isdir(attr_path):
-            shutil.rmtree(attr_path)
-    except Exception as e:
-        print(e)
-        return 0
-    return 1
 
 
 def sub_process_logger(model_id, process_name):

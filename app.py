@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-from config import url
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request, jsonify
 from subprocess import Popen
-from utils.utils import del_cache_files
 
 app = Flask(__name__)
+url = '/all_tables_relation/'
 
 
-@app.route(url + 'calculation/', methods=["POST"])
+@app.route('/all_tables_relation/calculation/', methods=["POST"])
 def find_relation():
     """
     post参数的格式如下：
@@ -100,25 +99,6 @@ def find_relation():
            ])
 
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
-
-
-@app.route("/update_parameter_config/", methods=['POST'])
-def update_parameter():
-    if not request.json:
-        abort(404)
-    post_json = request.json
-    # Delete cached files before updating parameters
-    # New parameters will be stored into MySQL
-    result = del_cache_files(post_json)
-    if not result:
-        return jsonify({'state': 0, 'msg': "清理缓存失败！"})
-    return jsonify({'msg': 'Analyze completed'})
-
-
-@app.route(url + 'finish/')
-def func():
-    model_id = request.args.get('model_id')
-    return f"Finish {model_id}"
 
 
 if __name__ == '__main__':

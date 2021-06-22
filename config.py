@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-url = '/all_tables_relation/'
 
 # 一个字段是否可以既作为主键，又作为外键
 both_roles = True
