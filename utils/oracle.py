@@ -326,9 +326,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
         logger = logging.getLogger(model_id)
     else:
         logger = sub_process_logger(model_id, multiprocessing.current_process().name)
-        logger.info(f"""
-                        本子进程中需要处理的表总数为{len(rel_cols)}
-                        """)
+        logger.info(f"""本子进程中需要处理的表总数为{len(rel_cols)}""")
     conn = cx_Oracle.connect(user, passwd, dsn)
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
@@ -337,7 +335,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select %s from {schema}.%s where rownum <= 10000'
+    sql = f'select "%s" from "{schema}"."%s" where rownum <= 10000'
     results = []
     logger.info('计算所有关系')
     i = 1
