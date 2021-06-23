@@ -38,7 +38,7 @@ source ~/.bashrc
 
 ~~2. 利用`pip`将待安装的包编译成whl文件，然后将全部文件拷贝至目标服务器进行安装，参考[这里](https://blog.csdn.net/SunJW_2017/article/details/103222205) 。~~
 
-2. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
+2. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，参考文章在[这里](https://blog.csdn.net/SunJW_2017/article/details/118152349) ，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
 
 # 3. 服务启动
 
