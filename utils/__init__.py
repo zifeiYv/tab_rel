@@ -74,27 +74,27 @@ def main(**kwargs):
             if cr.execute(sql):
                 logger.info('获取用户参数成功。')
                 res = cr.fetchone()
-                use_str_len = str(res[0]) if res[0] else '0'
+                use_str_len = str(res[0]) if res[0] is not None else '0'
                 data_cleansing = eval(str(res[1])) if res[1] else {'_': ['EXT_', 'ext_']}
-                inf_dup_ratio = res[2] if res[2] else 0.4
-                inf_str_len = res[3] if res[3] else 3
-                inf_tab_len = res[4] if res[4] else 10
+                inf_dup_ratio = res[2] if res[2] is not None else 0.4
+                inf_str_len = res[3] if res[3] is not None else 3
+                inf_tab_len = res[4] if res[4] is not None else 10
                 # tables1 = list(res[5].split(',')) if res[5] else []
             else:
                 logger.info('当前未指定参数，将采用默认值。')
                 use_str_len = '0'
                 data_cleansing = {'_': ['EXT_', 'ext_']}
-                inf_dup_ratio = 0.0
-                inf_str_len = 0
-                inf_tab_len = 0
+                inf_dup_ratio = 0.3
+                inf_str_len = 1
+                inf_tab_len = 5
                 # tables1 = []
         except:
             logger.warning('获取参数的SQL执行错误。')
             use_str_len = '0'
             data_cleansing = {'_': ['EXT_', 'ext_']}
-            inf_dup_ratio = 0.0
-            inf_str_len = 0
-            inf_tab_len = 0
+            inf_dup_ratio = 0.3
+            inf_str_len = 1
+            inf_tab_len = 5
             # tables1 = []
         # Merge custom parameters to a tuple
         custom_para = (use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len)

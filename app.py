@@ -97,6 +97,11 @@ def find_relation():
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
 
 
+@app.route('/update_parameter_config', methods=['POST'])
+def update():
+    return jsonify({'state': 1, 'msg': 'nothing to do'})
+
+
 if __name__ == '__main__':
     # 正式环境下用以下命令启动服务
     # gunicorn -c gunicorn_config.py app:app
