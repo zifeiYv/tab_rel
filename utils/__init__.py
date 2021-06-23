@@ -14,8 +14,7 @@ def main(**kwargs):
     model_id, notify_url, execute_obj, alg_name,
     cfg_db, cfg_host, cfg_passwd, cfg_port, cfg_user,
     tar_type, tar_tables, tar_db, tar_host,
-    tar_passwd, tar_port, tar_user, tar_url, tar_multi_schema,
-    tar_schema
+    tar_passwd, tar_port, tar_user, tar_url
     """
     model_id = kwargs['model_id']
     execute_obj = kwargs['execute_obj']
@@ -85,9 +84,9 @@ def main(**kwargs):
                 logger.info('当前未指定参数，将采用默认值。')
                 use_str_len = '0'
                 data_cleansing = {'_': ['EXT_', 'ext_']}
-                inf_dup_ratio = 0.4
-                inf_str_len = 3
-                inf_tab_len = 10
+                inf_dup_ratio = 0.0
+                inf_str_len = 0
+                inf_tab_len = 0
                 # tables1 = []
         except:
             logger.warning('获取参数的SQL执行错误。')

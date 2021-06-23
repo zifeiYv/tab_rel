@@ -4,17 +4,17 @@ import json
 data = {
     "algorithmName": "表关系分析算法",
     "configMap": {  # 配置数据库的信息
-        "db": "dmm_test",
-        "host": "191.168.6.103",
-        "password": "merit",
+        "db": "entity_fuse",
+        "host": "127.0.0.1",
+        "password": "123456",
         "port": 3306,
         "user": "root"
     },
     "dbInfo": {  # 数据源的信息
         "config": {
-            "db": "dmm_test",
-            "host": "191.168.6.103",
-            "password": "merit",
+            "db": "movie_data",
+            "host": "191.168.6.242",
+            "password": "merit1998",
             "port": 3306,
             "user": "root",
             "url": "localhost:1521/orcl",  # 仅用于oracle数据库
@@ -26,7 +26,7 @@ data = {
     },
     "notifyUrl": "http://1121",
     "executObj": "local_db v1版本",
-    "modelId": "92ae9b17770041ae85e563cf95c9cf56"
+    "modelId": "test1"
 }
 
 json_data = json.dumps(data)

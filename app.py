@@ -21,14 +21,12 @@ def find_relation():
         },
         "dbInfo": {  # 数据源的信息
             "config": {
-                "db": "dmm_test",
+                "db": "dmm_test",  # oracle下为模式名
                 "host": "191.168.6.103",
                 "password": "merit",
                 "port": 3306,
                 "user": "root",
                 "url": "localhost:1521/orcl",  # 仅用于oracle数据库
-                "multi_schema": False,  # 是否为多模式，仅用于oracle数据库
-                "target_schema": ""  # 引用的模式，仅用于oracle数据库
                 },
             "type": "mysql",
             "tables": []  # 存储指定表进行融合
@@ -93,9 +91,7 @@ def find_relation():
            '--tar_passwd', tar_passwd,
            '--tar_port', tar_port,
            '--tar_user', tar_user,
-           '--tar_url', tar_url,
-           '--tar_multi_schema', '',
-           '--tar_schema', ''
+           '--tar_url', tar_url
            ])
 
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})

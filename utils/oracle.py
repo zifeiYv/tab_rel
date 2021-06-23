@@ -84,43 +84,45 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
 
     url, user = kwargs['url'], kwargs['user']
     dsn = url.split('@')[1]
-    db = kwargs['db']
+    schema = kwargs['db']
     passwd = kwargs['passwd']
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, tables, False, user,
-                                       passwd, dsn, db, data_cleansing, inf_tab_len)
+                                       passwd, dsn, schema, data_cleansing, inf_tab_len)
         output = find_rel(rel_cols, pks, model_id, False,
-                          user, passwd, dsn, db, use_str_len, inf_dup_ratio, inf_str_len)
+                          user, passwd, dsn, schema, use_str_len, inf_dup_ratio, inf_str_len)
     else:
         if not len(tables) % processes:
             batch_size = int(len(tables) / processes)
         else:
             batch_size = int(len(tables) / processes) + 1
-        q = multiprocessing.Queue()
         jobs = []
         for i in range(processes):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size:],
-                                                  True, user, passwd, dsn, db,
+                                                  True, user, passwd, dsn, schema,
                                                   data_cleansing, inf_tab_len,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
                                             args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
-                                                  True, user, passwd, dsn, db,
+                                                  True, user, passwd, dsn, schema,
                                                   data_cleansing, inf_tab_len,))
             jobs.append(p)
             p.start()
         for p in jobs:
             p.join()
-            p.close()
+            logger.info(f'{p.name} join 完成')
         rel_cols, pks = {}, {}
-        for _ in jobs:
-            _a, _b = q.get()
-            rel_cols.update(_a)
-            pks.update(_b)
+        file_list = [i for i in os.listdir(f'./caches/{model_id}') if i.startswith('preprocess-Process')]
+        for file in file_list:
+            with open(f'./caches/{model_id}/{file}') as f:
+                res = json.load(f)
+            rel_cols.update(res['rel_cols'])
+            pks.update(res['pks'])
 
-        q = multiprocessing.Queue()
+        logger.info('多进程数据预处理完成')
+
         jobs = []
         rel_cols_items = list(rel_cols.items())
         if not len(rel_cols_items) % processes:
@@ -162,7 +164,7 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
+def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
                    data_cleansing=None, inf_tab_len=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
@@ -173,7 +175,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
         user(str): 目标数据库的用户名
         passwd(str): 目标数据库的密码
         dsn(str): 目标数据库的dsn
-        db(str): 目标数据源的数据库名称
+        schema(str): 目标数据源的数据库名称
         data_cleansing(dict): 包含过滤规则的字典
         inf_tab_len(int): 表长度下界
 
@@ -193,12 +195,12 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
                 """)
     conn = cx_Oracle.connect(user, passwd, dsn)
 
-    sql1 = f'select count(1) from {db}."%s"'
+    sql1 = f'select count(1) from {schema}."%s"'
     sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
-           f"and owner='{db}'"
-    sql3 = f'select count("%s") from {db}."%s"'
-    sql4 = f'select count(distinct "%s") from {db}."%s"'
-    sql5 = f'select count(1) from {db}."%s" where length("%s")=lengthb("%s")'
+           f"and owner='{schema}'"
+    sql3 = f'select count("%s") from {schema}."%s"'
+    sql4 = f'select count(distinct "%s") from {schema}."%s"'
+    sql5 = f'select count(1) from {schema}."%s" where length("%s")=lengthb("%s")'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -276,7 +278,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
             if os.path.exists(f'./filters/{model_id}/{user}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
-            value = pd.read_sql(f'select "{pk}" from {db}."{tab}"', conn)
+            value = pd.read_sql(f'select "{pk}" from {schema}."{tab}"', conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
@@ -296,7 +298,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, db,
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db,
+def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
              use_str_len=None, inf_dup_ratio=None, inf_str_len=None):
     """查找关系。
 
@@ -308,7 +310,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db,
         model_id(str):
         dsn(str):
         multi(bool):
-        db(str):
+        schema(str):
         use_str_len(int): 以整型代替布尔值，表示是否使用字符平均长度来过滤
         inf_dup_ratio(float): 去重后的列表长度占原列表长度的比例
         inf_str_len(int): 将值转化为字符后的平均长度，仅当use_str_len生效时生效
@@ -335,7 +337,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, db,
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select %s from {db}.%s where rownum <= 10000'
+    sql = f'select %s from {schema}.%s where rownum <= 10000'
     results = []
     logger.info('计算所有关系')
     i = 1

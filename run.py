@@ -25,8 +25,6 @@ if __name__ == '__main__':
     parser.add_argument('--tar_port', help='目标数据源的端口号')
     parser.add_argument('--tar_user', help='目标数据源的用户名')
     parser.add_argument('--tar_url', help='仅用于oracle数据库')
-    parser.add_argument('--tar_multi_schema', help='仅用于oracle数据库')
-    parser.add_argument('--tar_schema', help='仅用于oracle数据库')
 
     args = parser.parse_args()
     model_id = args.model_id
@@ -46,11 +44,8 @@ if __name__ == '__main__':
     tar_port = args.tar_port
     tar_user = args.tar_user
     tar_url = args.tar_url
-    tar_multi_schema = args.tar_multi_schema
-    tar_schema = args.tar_schema
     init_logger(model_id)
     main(model_id=model_id, notify_url=notify_url, execute_obj=execute_obj, alg_name=alg_name,
          cfg_db=cfg_db, cfg_host=cfg_host, cfg_passwd=cfg_passwd, cfg_port=cfg_port, cfg_user=cfg_user,
          tar_type=tar_type, tar_tables=tar_tables, tar_db=tar_db, tar_host=tar_host, tar_passwd=tar_passwd,
-         tar_port=tar_port, tar_user=tar_user, tar_url=tar_url, tar_multi_schema=tar_multi_schema,
-         tar_schema=tar_schema)
+         tar_port=tar_port, tar_user=tar_user, tar_url=tar_url)
