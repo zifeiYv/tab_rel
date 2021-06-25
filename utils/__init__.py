@@ -21,6 +21,23 @@ def main(**kwargs):
     alg_name = kwargs['alg_name']
 
     logger = logging.getLogger(model_id)
+
+    logger.info(f"""参数信息：
+    model_id: {model_id},
+    cfg_db: {kwargs['cfg_db']},
+    cfg_host: {kwargs['cfg_host']},
+    cfg_passwd: {kwargs['cfg_passwd']},
+    cfg_port: {kwargs['cfg_port']},
+    cfg_user: {kwargs['cfg_user']},
+    
+    tar_type: {kwargs['tar_type']},
+    tar_db: {kwargs['tar_db']},
+    tar_host: {kwargs['tar_host']},
+    tar_passwd: {kwargs['tar_passwd']},
+    tar_port: {kwargs['tar_port']},
+    tar_user: {kwargs['tar_user']},
+    tar_url: {kwargs['tar_url']}
+    """)
     logger.info('初始化状态表...')
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # Step 1 初始化模型的状态表。
@@ -116,7 +133,7 @@ def main(**kwargs):
     #   会以"1"（数值型）标示；否则，以"0"（数值型）标示。在执行删除操作时，只会删除"scantype"取值为"0"的记录。
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     last_rel_res = []  # 缓存上次计算的结果
-    user_rel_res = []  # 缓存经过用户标记的结果
+    # user_rel_res = []  # 缓存经过用户标记的结果
     if status_bak:  # a re-compute model
         logger.info('加载上次计算结果...')
         with conn.cursor() as cr:
@@ -125,14 +142,14 @@ def main(**kwargs):
                 f'where model="{model_id}"')
             res = cr.fetchall()
             for r_ in res:
-                last_rel_res.append("".join(r_))
-            cr.execute(
-                f'select db1, table1, column1, db2, table2, column2 from analysis_results '
-                f'where model="{model_id}" and `scantype` != 0')
-            res = cr.fetchall()
-            for r_ in res:
-                user_rel_res.append("".join(r_))
-        conn.commit()
+                last_rel_res.append("".join(map(str, r_)))
+        #     cr.execute(
+        #         f'select db1, table1, column1, db2, table2, column2 from analysis_results '
+        #         f'where model="{model_id}" and `scantype` != 0')
+        #     res = cr.fetchall()
+        #     for r_ in res:
+        #         user_rel_res.append("".join(r_))
+        # conn.commit()
         logger.info('结果加载完成')
 
     tar_tables = eval(kwargs['tar_tables']) if eval(kwargs['tar_tables']) else None
