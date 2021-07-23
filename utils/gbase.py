@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
 import logging
-import pymysql
+import time
+
+from GBaseConnector import connect
 from config import multi_process, mysql_type_list, both_roles, sup_out_foreign_key
 import pandas as pd
 from pybloom import BloomFilter
@@ -36,38 +38,47 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
         processes = multi_process
         logger.info(f'使用多进程，进程数量为：{processes}')
 
-    conn = pymysql.connect(**db_kw)
+    conn = connect(**db_kw)
+
     db = db_kw['db']
+    cr = conn.cursor()
+
+    table_and_comments = {}
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
-        with conn.cursor() as cr:
-            sql = f"select table_name from information_schema.tables where table_schema='{db}' " \
-                  f"and table_type='BASE TABLE'"
-            cr.execute(sql)
-            tables = [i[0] for i in cr.fetchall()]
-        conn.close()
+        sql = f"select table_name table_comment from information_schema.tables where table_schema='{db}' " \
+              f"and table_type='BASE TABLE'"
+        cr.execute(sql)
+        for i in cr.fetchall():
+            table_and_comments[i[0]] = i[1]
     else:
         logger.info('用户指定了表，将在指定表中寻找关联关系')
-        tables = tar_tables
-    if not tables:
+        for tab in tar_tables:
+            sql = f"select table_comment from information_schema.tables where table_schema='{db}' and " \
+                  f"table_name='{tab}'"
+            cr.execute(sql)
+            table_and_comments[tab] = cr.fetchone()[0]
+    cr.close()
+    conn.close()
+    if not table_and_comments:
         logger.warning('未发现可用表')
         return
-    logger.info(f'获取表成功，共：{len(tables)}个')
+    logger.info(f'获取表成功，共：{len(table_and_comments)}个')
 
     if multi_process:
-        if len(tables) < 150:
-            logger.warning(f'表数较少（{len(tables)}），启用多进程可能效果不佳')
-    df = execute(model_id, processes, tables, custom_para, **db_kw)
+        if len(table_and_comments) < 150:
+            logger.warning(f'表数较少（{len(table_and_comments)}），启用多进程可能效果不佳')
+    df = execute(model_id, processes, table_and_comments, custom_para, **db_kw)
     return df
 
 
-def execute(model_id, processes, tables, custom_para=None, **kwargs):
+def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs):
     """执行函数。
 
     Args:
         model_id(str): 当前融合任务的唯一标识
-        processes: 进程数量
-        tables: 所有待计算的表名
+        processes(int): 进程数量
+        table_and_comments(dict): 所有待计算的表名
         custom_para(tuple): 用户配置的参数组成的元组
         **kwargs: 目标数据源的相关参数
 
@@ -84,26 +95,26 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
     host, port, user = kwargs['host'], int(kwargs['port']), kwargs['user']
     passwd, db = kwargs['passwd'], kwargs['db']
     if processes == 1:  # 单进程
-        rel_cols, pks = pre_processing(model_id, tables, False, host,
+        rel_cols, pks = pre_processing(model_id, table_and_comments, False, host,
                                        port, user, passwd, db, data_cleansing, inf_tab_len)
         output = find_rel(rel_cols, pks, model_id, False, host,
                           port, user, passwd, db, use_str_len, inf_dup_ratio, inf_str_len)
     else:
         logger.info('多进程预处理数据...')
-        if not len(tables) % processes:
-            batch_size = int(len(tables) / processes)
+        if not len(table_and_comments) % processes:
+            batch_size = int(len(table_and_comments) / processes)
         else:
-            batch_size = int(len(tables) / processes) + 1
+            batch_size = int(len(table_and_comments) / processes) + 1
         jobs = []
         for i in range(processes):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing, name=f'preprocess-Process-{i}',
-                                            args=(model_id, tables[i * batch_size:],
+                                            args=(model_id, table_and_comments[i * batch_size:],
                                                   True, host, port, user, passwd, db,
                                                   data_cleansing, inf_tab_len,))
             else:
                 p = multiprocessing.Process(target=pre_processing, name=f'preprocess-Process-{i}',
-                                            args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
+                                            args=(model_id, table_and_comments[i * batch_size: (i + 1) * batch_size],
                                                   True, host, port, user, passwd, db,
                                                   data_cleansing, inf_tab_len,))
             jobs.append(p)
@@ -164,13 +175,13 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
+def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd, db,
                    data_cleansing=None, inf_tab_len=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 当前融合任务的唯一标识
-        tables(list): 表名列表
+        table_and_comments(dict): 表名及注释
         multi(bool): 是否采用多进程进行计算
         host(str): 目标数据库的ip
         port(int): 目标数据库的端口号
@@ -192,12 +203,13 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
     else:
         logger = sub_process_logger(model_id, multiprocessing.current_process().name)
         logger.info(f"""
-        本子进程中需要处理的表总数为{len(tables)}
+        本子进程中需要处理的表总数为{len(table_and_comments)}
         """)
-    conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    start_time = time.time()
 
     sql1 = f'select count(1) from `{db}`.`%s`'
-    sql2 = f'select column_name, data_type from information_schema.columns where ' \
+    sql2 = f'select column_name, data_type, column_comment from information_schema.columns where ' \
            f"table_schema='{db}' and table_name='%s'"
     sql3 = f'select count(`%s`) from `{db}`.`%s`'
     sql4 = f'select count(distinct `%s`) from `{db}`.`%s`'
@@ -211,9 +223,18 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
     pks = {}  # 存储表及其可能的主键列表
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
-    for i in range(len(tables)):
-        tab = tables[i]
-        logger.debug(f'进度：{i+1}/{len(tables)}')
+    i = 0
+    for tab in table_and_comments:
+        if time.time() - start_time >= 3600 * 2:  # 距离初始连接超过两个小时，则强制关闭并重新连接
+            try:
+                cr.close()
+                conn.close()
+            finally:
+                conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+                start_time = time.time()
+                cr = conn.cursor()
+        tab_comment = table_and_comments[tab]
+        logger.debug(f'进度：{i+1}/{len(table_and_comments)}')
         logger.debug(f'  {tab}：长度校验')
         try:
             cr.execute(sql1 % tab)
@@ -221,13 +242,16 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
             if row_num > 1e8:
                 length_too_long[tab] = row_num
                 logger.debug(f'  {tab}：超长，被过滤')
+                i += 1
                 continue
             elif row_num == 0:
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
+                i += 1
                 continue
             elif row_num < int(inf_tab_len):
                 logger.debug(f'  {tab}表的长度低于设置的阈值（{inf_tab_len}）')
+                i += 1
                 continue
             else:
                 length_normal[tab] = row_num
@@ -235,21 +259,23 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
         except Exception as e:
             logger.debug(f'  {tab}：不存在：{e}')
             no_exist.append(tab)
+            i += 1
             continue
 
         logger.debug(f'  {tab}：查找主键')
         try:
             cr.execute(sql2 % tab)
-        except pymysql.err.InternalError:
+        except:
             logger.warning('数据库内部错误')
             logger.warning(traceback.format_exc())
             continue
 
-        field_and_type = cr.fetchall()
-        psb_pk, psb_col = [], []
-        for j in range(len(field_and_type)):
-            field_name = field_and_type[j][0]
-            field_type = field_and_type[j][1]
+        field_info = cr.fetchall()
+        psb_pk, psb_col = {}, {}
+        for j in range(len(field_info)):
+            field_name = field_info[j][0]
+            field_type = field_info[j][1]
+            field_comment = field_info[j][2]
             if not col_name_filter(tab, field_name, data_cleansing):
                 logger.debug(f'    {field_name}不符合保留规则，被过滤')
                 continue
@@ -258,7 +284,7 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
                 continue
             try:
                 cr.execute(sql3 % (field_name, tab))
-            except pymysql.err.InternalError:
+            except:
                 logger.warning('数据库内部错误')
                 logger.warning(traceback.format_exc())
                 continue
@@ -269,30 +295,32 @@ def pre_processing(model_id, tables, multi, host, port, user, passwd, db,
                     num2 = cr.fetchone()[0]
                     cr.execute(sql5 % (tab, field_name, field_name))
                     num3 = cr.fetchone()[0]
-                except pymysql.err.InternalError:
+                except:
                     logger.warning('数据库内部错误')
                     logger.warning(traceback.format_exc())
                     continue
                 if num1 == num2 and num2 == num3:
-                    psb_pk.append(field_name)
+                    psb_pk[field_name] = field_comment
                     if both_roles:
-                        psb_col.append(field_name)
+                        psb_col[field_name] = field_comment
                 elif num1 == num3:
-                    psb_col.append(field_name)
-        rel_cols[tab] = psb_col
+                    psb_col[field_name] = field_comment
+        rel_cols[tab] = {'comment': tab_comment,
+                         'psb_col': psb_col}
         if len(psb_pk):
             logger.debug(f'  {tab}：主键已保存')
-            pks[tab] = psb_pk
+            pks[tab] = {'comment': tab_comment, 'psb_pk': psb_pk}
         else:
             logger.debug(f'  {tab}：未发现主键')
             without_pks.append(tab)
+            i += 1
             continue
 
         logger.debug(f'  {tab}：正在生成filter文件')
         if not os.path.exists(f'./filters/{model_id}/{db}'):
             os.makedirs(f'./filters/{model_id}/{db}')
         capacity = int(length_normal[tab] * 1.2)
-        for pk in pks[tab]:
+        for pk in pks[tab]['psb_pk']:
             filter_name = tab + '@' + pk + '.filter'
             if os.path.exists(f'./filters/{model_id}/{db}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
@@ -356,13 +384,25 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
 
     sql = f'select `%s` from `{db}`.`%s` limit 10000'
     results = []
-    conn = pymysql.connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    start_time = time.time()
+
     logger.info('计算所有关系')
     i = 1
     for tab in rel_cols_dict:
-        logger.debug(f'进度：{i}/{len(rel_cols_dict)}')
+        logger.debug(f'进度：{i}/{len(rel_cols_dict)}，当前表:{tab}')
+        if time.time() - start_time >= 3600 * 2:  # 距离初始连接超过两个小时，则强制关闭并重新连接
+            try:
+                conn.close()
+            finally:
+                conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+                start_time = time.time()
         for col in rel_cols_dict[tab]:
-            value = pd.read_sql(sql % (col, tab), conn)
+            try:
+                value = pd.read_sql(sql % (col, tab), conn)
+            except:
+                logger.debug(f'{sql % (col, tab)}执行出错')
+                continue
             df = col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio))
             if (isinstance(df, pd.DataFrame) and df.empty) or (df is None):
                 logger.debug(f'{tab}表的{col}字段值未通过内容校验')
@@ -370,12 +410,12 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
             for pk_tab in pks:
                 if pk_tab == tab:
                     continue
-                for pk in pks[pk_tab]:
+                for pk in pks[pk_tab]['psb_pk']:
                     with open(f'./filters/{model_id}/{db}/{pk_tab}@{pk}.filter', 'rb') as f:
                         bf = pickle.load(f)
                     flag = 1
                     num_not_in_bf = 0
-                    for k in df[col]:
+                    for k in df.iloc[:, 0]:
                         if k not in bf:
                             num_not_in_bf += 1
                         if num_not_in_bf / 10000 > sup_out_foreign_key:
@@ -383,9 +423,10 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
                             break
                     if flag:
                         not_match_ratio = num_not_in_bf / 10000
-                        res = [model_id, db, pk_tab, 'table1comment', pk, 'column1comment',
+                        res = [model_id, db, pk_tab, pks[pk_tab]['comment'], pk, pks[pk_tab]['psb_pk'][pk],
                                model_id, db,
-                               tab, 'table2comment', col, 'column2comment', not_match_ratio]
+                               tab, rel_cols_dict[tab]['comment'], col, rel_cols_dict[tab]['psb_col'][col],
+                               not_match_ratio]
                         results.append(res)
         i += 1
     if multi:
