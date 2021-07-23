@@ -38,6 +38,12 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
         processes = multi_process
         logger.info(f'使用多进程，进程数量为：{processes}')
 
+    # todo
+    if multi_process > 0:
+        logger.warning(f'GBase 8a 免费版会限制最大连接数，为保证正常运行，不允许使用多进程')
+        processes = 1
+        logger.info('强制使用单进程')
+
     conn = connect(**db_kw)
 
     db = db_kw['db']

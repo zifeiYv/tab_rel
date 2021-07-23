@@ -13,7 +13,7 @@ from .utils import col_name_filter, col_value_filter
 
 
 def run(model_id, tar_tables=None, custom_para=None, **db_kw):
-    """根据指定的MySQL数据源进行关系发现的程序的主入口。
+    """根据指定的Oracle数据源进行关系发现的程序的主入口。
 
     Args:
         model_id(str): 当前融合任务的唯一标识
@@ -37,38 +37,45 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     user = db_kw['user']
     url = db_kw['url']
     dsn = url.split('@')[1]
-    db = db_kw['db']
     passwd = db_kw['passwd']
     conn = cx_Oracle.connect(user, passwd, dsn)
+    schema = db_kw['db']
+    table_and_comments = {}
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
-            sql = f"select table_name from all_tables where owner='{db}'"
+            sql = f"select table_name, comments from all_tab_comments where owner='{schema}' and table_type='TABLE'"
             cr.execute(sql)
-            tables = [i[0] for i in cr.fetchall()]
-        conn.close()
+            for i in cr.fetchall():
+                table_and_comments[i[0]] = i[1]
     else:
         logger.info('用户指定了表，将在指定表中寻找关联关系')
-        tables = tar_tables
-    if not tables:
+        for tab in tar_tables:
+            sql = f"select comments from all_tab_comments where owner='{schema}' and table_name='{tab}'"
+            with conn.cursor() as cr:
+                cr.execute(sql)
+                table_and_comments[tab] = cr.fetchone()[0]
+    conn.close()
+
+    if not table_and_comments:
         logger.warning('未发现可用表')
         return
-    logger.info(f'获取表成功，共：{len(tables)}个')
+    logger.info(f'获取表成功，共：{len(table_and_comments)}个')
 
     if multi_process:
-        if len(tables) < 150:
-            logger.warning(f'表数较少（{len(tables)}），启用多进程可能效果不佳')
-    df = execute(model_id, processes, tables, custom_para, **db_kw)
+        if len(table_and_comments) < 150:
+            logger.warning(f'表数较少（{len(table_and_comments)}），启用多进程可能效果不佳')
+    df = execute(model_id, processes, table_and_comments, custom_para, **db_kw)
     return df
 
 
-def execute(model_id, processes, tables, custom_para=None, **kwargs):
+def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs):
     """执行函数。
 
     Args:
         model_id(str): 当前融合任务的唯一标识
         processes(int): 进程数量
-        tables(list): 所有待计算的表名
+        table_and_comments(dict): 所有待计算的表名
         custom_para(tuple): 用户配置的参数组成的元组
         **kwargs: 目标数据源的相关参数
 
@@ -87,25 +94,26 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
     schema = kwargs['db']
     passwd = kwargs['passwd']
     if processes == 1:  # 单进程
-        rel_cols, pks = pre_processing(model_id, tables, False, user,
+        rel_cols, pks = pre_processing(model_id, table_and_comments, False, user,
                                        passwd, dsn, schema, data_cleansing, inf_tab_len)
         output = find_rel(rel_cols, pks, model_id, False,
                           user, passwd, dsn, schema, use_str_len, inf_dup_ratio, inf_str_len)
     else:
-        if not len(tables) % processes:
-            batch_size = int(len(tables) / processes)
+        logger.info('多进程预处理数据...')
+        if not len(table_and_comments) % processes:
+            batch_size = int(len(table_and_comments) / processes)
         else:
-            batch_size = int(len(tables) / processes) + 1
+            batch_size = int(len(table_and_comments) / processes) + 1
         jobs = []
         for i in range(processes):
             if i == processes - 1:
                 p = multiprocessing.Process(target=pre_processing,
-                                            args=(model_id, tables[i * batch_size:],
+                                            args=(model_id, table_and_comments[i * batch_size:],
                                                   True, user, passwd, dsn, schema,
                                                   data_cleansing, inf_tab_len,))
             else:
                 p = multiprocessing.Process(target=pre_processing,
-                                            args=(model_id, tables[i * batch_size: (i + 1) * batch_size],
+                                            args=(model_id, table_and_comments[i * batch_size: (i + 1) * batch_size],
                                                   True, user, passwd, dsn, schema,
                                                   data_cleansing, inf_tab_len,))
             jobs.append(p)
@@ -120,7 +128,6 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
                 res = json.load(f)
             rel_cols.update(res['rel_cols'])
             pks.update(res['pks'])
-
         logger.info('多进程数据预处理完成')
 
         jobs = []
@@ -164,13 +171,13 @@ def execute(model_id, processes, tables, custom_para=None, **kwargs):
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
+def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schema,
                    data_cleansing=None, inf_tab_len=None):
     """获取table的主键和可能的外键，并针对主键生成filter文件。
 
     Args:
         model_id(str): 模型的唯一标识
-        tables: 表名，要么为list，要么为str
+        table_and_comments(dict): 表名及其注释组成的dict
         multi(bool): 是否采用多进程进行计算
         user(str): 目标数据库的用户名
         passwd(str): 目标数据库的密码
@@ -191,13 +198,14 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
     else:
         logger = sub_process_logger(model_id, multiprocessing.current_process().name)
         logger.info(f"""
-                本子进程中需要处理的表总数为{len(tables)}
+                本子进程中需要处理的表总数为{len(table_and_comments)}
                 """)
     conn = cx_Oracle.connect(user, passwd, dsn)
 
     sql1 = f'select count(1) from {schema}."%s"'
-    sql2 = f"select column_name, data_type from all_tab_columns where table_name='%s' " \
-           f"and owner='{schema}'"
+    sql2 = f"select a.column_name, a.data_type, b.comments from all_tab_columns a, all_col_comments b " \
+           f"where a.owner='{schema}' and a.owner=b.owner and a.table_name='%s' and a.table_name=b.table_name and " \
+           f"a.column_name=b.column_name"
     sql3 = f'select count("%s") from {schema}."%s"'
     sql4 = f'select count(distinct "%s") from {schema}."%s"'
     sql5 = f'select count(1) from {schema}."%s" where length("%s")=lengthb("%s")'
@@ -210,7 +218,10 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
     pks = {}  # 存储表及其可能的主键列表
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
-    for tab in tables:
+    i = 0
+    for tab in table_and_comments:
+        tab_comment = table_and_comments[tab]
+        logger.debug(f'进度:{i+1}/{len(table_and_comments)}')
         logger.debug(f'  {tab}：长度校验')
         try:
             cr.execute(sql1 % tab)
@@ -218,13 +229,16 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
             if row_num > 1e8:
                 length_too_long[tab] = row_num
                 logger.debug(f'  {tab}：超长，被过滤')
+                i += 1
                 continue
             elif row_num == 0:
                 length_zero.append(tab)
                 logger.debug(f'  {tab}：为空，被过滤')
+                i += 1
                 continue
             elif row_num < int(inf_tab_len):
                 logger.debug(f'  {tab}表的长度低于设置的阈值（{inf_tab_len}）')
+                i += 1
                 continue
             else:
                 length_normal[tab] = row_num
@@ -232,15 +246,17 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
         except Exception as e:
             logger.debug(f'  {tab}：不存在：{e}')
             no_exist.append(tab)
+            i += 1
             continue
 
         logger.debug(f'  {tab}：查找主键')
         cr.execute(sql2 % tab)
-        field_and_type = cr.fetchall()
-        psb_pk, psb_col = [], []
-        for i in range(len(field_and_type)):
-            field_name = field_and_type[i][0]
-            field_type = field_and_type[i][1]
+        field_info = cr.fetchall()
+        psb_pk, psb_col = {}, {}
+        for i in range(len(field_info)):
+            field_name = field_info[i][0]
+            field_type = field_info[i][1]
+            field_comment = field_info[i][2]
             if not col_name_filter(tab, field_name, data_cleansing):
                 logger.debug(f'    {field_name}不符合保留规则，被过滤')
                 continue
@@ -255,25 +271,27 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
                 cr.execute(sql5 % (tab, field_name, field_name))
                 num3 = cr.fetchone()[0]
                 if num1 == num2 and num2 == num3:
-                    psb_pk.append(field_name)
+                    psb_pk[field_name] = field_comment
                     if both_roles:
-                        psb_col.append(field_name)
+                        psb_col[field_name] = field_comment
                 elif num1 == num3:
-                    psb_col.append(field_name)
-        rel_cols[tab] = psb_col
+                    psb_col[field_name] = field_comment
+        rel_cols[tab] = {"comment": tab_comment,
+                         "psb_col": psb_col}
         if len(psb_pk):
             logger.debug(f'  {tab}：主键已保存')
-            pks[tab] = psb_pk
+            pks[tab] = {"comment": tab_comment, "psb_pk": psb_pk}
         else:
             logger.debug(f'  {tab}：未发现主键')
             without_pks.append(tab)
+            i += 1
             continue
 
-        logger.debug(f'  {tab}：生成filter文件')
+        logger.debug(f'  {tab}：正在生成filter文件')
         if not os.path.exists(f'./filters/{model_id}/{user}'):
             os.makedirs(f'./filters/{model_id}/{user}')
         capacity = int(length_normal[tab] * 1.2)
-        for pk in pks[tab]:
+        for pk in pks[tab]['psb_pk']:
             filter_name = tab + '@' + pk + '.filter'
             if os.path.exists(f'./filters/{model_id}/{user}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
@@ -285,6 +303,7 @@ def pre_processing(model_id, tables, multi, user, passwd, dsn, schema,
             with open(f'./filters/{model_id}/{user}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
         logger.debug(f'  {tab}：全部filter已保存')
+        i += 1
     cr.close()
     conn.close()
     logger.info('完成')
@@ -341,7 +360,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
     i = 1
     for tab in rel_cols_dict:
         logger.debug(f'进度：{i}/{len(rel_cols_dict)}')
-        for col in rel_cols_dict[tab]:
+        for col in rel_cols_dict[tab]['psb_col']:
             value = pd.read_sql(sql % (col, tab), conn)
             df = col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio))
             if (isinstance(df, pd.DataFrame) and df.empty) or (df is None):
@@ -350,7 +369,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
             for pk_tab in pks:
                 if pk_tab == tab:
                     continue
-                for pk in pks[pk_tab]:
+                for pk in pks[pk_tab]['psb_pk']:
                     with open(f'./filters/{model_id}/{user}/{pk_tab}@{pk}.filter', 'rb') as f:
                         bf = pickle.load(f)
                     flag = 1
@@ -363,9 +382,10 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
                             break
                     if flag:
                         not_match_ratio = num_not_in_bf / 10000
-                        res = [model_id, user, pk_tab, 'table1comment', pk, 'column1comment',
+                        res = [model_id, user, pk_tab, pks[pk_tab]['comment'], pk, pks[pk_tab]['psb_pk'][pk],
                                model_id, user,
-                               tab, 'table2comment', col, 'column2comment', not_match_ratio]
+                               tab, rel_cols_dict[tab]['comment'], col, rel_cols_dict[tab]['psb_col'][col],
+                               not_match_ratio]
                         results.append(res)
         i += 1
     if multi:
