@@ -33,7 +33,8 @@ all_deps = [
     'pybloom-mirror-2.0.0',
     'PyMySQL-1.0.2',
     'setuptools-57.0.0',
-    'GBaseConnector-1.0.0'
+    'GBaseConnector-1.0.0',
+    'psycopg2-2.9.1'
 ]
 
 root = os.path.dirname(os.path.abspath(__file__))
