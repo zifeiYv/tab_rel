@@ -34,7 +34,7 @@ all_deps = [
     'PyMySQL-1.0.2',
     'setuptools-57.0.0',
     'GBaseConnector-1.0.0',
-    'psycopg2-2.9.1'
+    'psycopg2_binary'
 ]
 
 root = os.path.dirname(os.path.abspath(__file__))
