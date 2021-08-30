@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import traceback
+import requests
 
 from .utils import save_to_db, col_value_filter, col_name_filter
 import logging
@@ -221,3 +222,11 @@ def main(**kwargs):
                 conn.commit()
     logger.info(f'计算完成')
     conn.close()
+    logger.info('回调……')
+    try:
+        requests.get(kwargs['notify_url'] + '?modelId=' + model_id)
+        logger.info('成功')
+    except Exception as e:
+        logger.error(e)
+        logger.error(traceback.format_exc())
+        logger.error('失败')
