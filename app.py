@@ -97,7 +97,7 @@ def find_relation():
     return jsonify({'state': 1, 'msg': "Valid parameters and computation started."})
 
 
-@app.route('/update_parameter_config', methods=['POST'])
+@app.route('/update_parameter_config/', methods=['POST'])
 def update():
     return jsonify({'state': 1, 'msg': 'nothing to do'})
 
