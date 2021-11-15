@@ -62,7 +62,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
 
     if not table_and_comments:
         logger.warning('未发现可用表')
-        return
+        return pd.DataFrame()
 
     if multi_process:
         if len(table_and_comments) < 150:
