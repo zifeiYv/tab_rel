@@ -37,7 +37,9 @@ def main(**kwargs):
     tar_passwd: {kwargs['tar_passwd']},
     tar_port: {kwargs['tar_port']},
     tar_user: {kwargs['tar_user']},
-    tar_url: {kwargs['tar_url']}
+    tar_url: {kwargs['tar_url']},
+    
+    notify_url: {kwargs['notify_url']}
     """)
     logger.info('初始化状态表...')
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
