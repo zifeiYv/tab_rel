@@ -52,7 +52,7 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     table_and_comments = {}
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
-        sql = f"select table_name table_comment from information_schema.tables where table_schema='{db}' " \
+        sql = f"select table_name, table_comment from information_schema.tables where table_schema='{db}' " \
               f"and table_type='BASE TABLE'"
         cr.execute(sql)
         for i in cr.fetchall():
