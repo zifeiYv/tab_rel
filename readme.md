@@ -40,11 +40,16 @@ source ~/.bashrc
 
 2. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，参考文章在[这里](https://blog.csdn.net/SunJW_2017/article/details/118152349) ，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
 
-# 3. 服务启动
+# 3. 服务启动与终止
 
-正式环境中推荐使用`gunicorn`进行启动，启动命令为：
+正式环境中推荐使用`gunicorn`进行启动，算法已经进行了封装，启动命令为：
 ```cmd
-gunicorn -c gunicorn_config.py app:app
+sh start_app.sh
+```
+
+算法终止命令:
+```cmd
+sh stop_app.sh
 ```
 
 如果要实现对进程的动态监控，推荐使用`supervisor`，使用方法参考[这里](https://blog.csdn.net/SunJW_2017/article/details/114533853) 。
