@@ -1,4 +1,4 @@
-gunicorn -c gunicorn_config.py app:app
+gunicorn -c gunicorn_config.py tab_rel_app:app
 if [ $? -eq 0 ]; then
   echo "启动成功"
 else
