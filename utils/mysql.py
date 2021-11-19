@@ -284,8 +284,8 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
                     cr.execute(sql4 % (field_name, tab))
                     num2 = cr.fetchone()[0]
                     # mysql可以对decimal、int类型的字段使用length和char_length函数
-                    cr.execute(sql5 % (tab, field_name, field_name))
-                    num3 = cr.fetchone()[0]
+                    # cr.execute(sql5 % (tab, field_name, field_name))
+                    num3 = num2
                 except pymysql.err.InternalError:
                     logger.warning('数据库内部错误')
                     logger.warning(traceback.format_exc())
@@ -322,6 +322,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
                 bf.add(j)
             with open(f'./filters/{model_id}/{db}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
+            logger.debug(f'    {tab}.{pk} 新增完成')
         logger.debug(f'  {tab}：全部filter已保存')
         i += 1
     logger.info('完成')

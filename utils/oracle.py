@@ -268,8 +268,8 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
             if num1 == row_num:
                 cr.execute(sql4 % (field_name, tab))
                 num2 = cr.fetchone()[0]
-                cr.execute(sql5 % (tab, field_name, field_name))
-                num3 = cr.fetchone()[0]
+                # cr.execute(sql5 % (tab, field_name, field_name))
+                num3 = num2
                 if num1 == num2 and num2 == num3:
                     psb_pk[field_name] = field_comment
                     if both_roles:
@@ -302,6 +302,7 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
                 bf.add(j)
             with open(f'./filters/{model_id}/{user}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
+            logger.debug(f'  {tab}：全部filter已保存')
         logger.debug(f'  {tab}：全部filter已保存')
         i += 1
     cr.close()

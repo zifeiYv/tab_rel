@@ -14,7 +14,7 @@ def main(**kwargs):
     可选的参数包括：
     model_id, notify_url, execute_obj, alg_name,
     cfg_db, cfg_host, cfg_passwd, cfg_port, cfg_user,
-    tar_type, tar_tables, tar_db, tar_host,
+    tar_type, tar_db, tar_host,
     tar_passwd, tar_port, tar_user, tar_url
     """
     model_id = kwargs['model_id']
@@ -99,7 +99,7 @@ def main(**kwargs):
                 inf_dup_ratio = res[2] if res[2] is not None else 0.4
                 inf_str_len = res[3] if res[3] is not None else 3
                 inf_tab_len = res[4] if res[4] is not None else 10
-                # tables1 = list(res[5].split(',')) if res[5] else []
+                tar_tables = list(res[5].split(',')) if res[5] else []
             else:
                 logger.info('当前未指定参数，将采用默认值。')
                 use_str_len = '0'
@@ -107,7 +107,7 @@ def main(**kwargs):
                 inf_dup_ratio = 0.3
                 inf_str_len = 1
                 inf_tab_len = 5
-                # tables1 = []
+                tar_tables = []
         except:
             logger.warning('获取参数的SQL执行错误。')
             use_str_len = '0'
@@ -115,7 +115,7 @@ def main(**kwargs):
             inf_dup_ratio = 0.3
             inf_str_len = 1
             inf_tab_len = 5
-            # tables1 = []
+            tar_tables = []
         # Merge custom parameters to a tuple
         custom_para = (use_str_len, data_cleansing, inf_dup_ratio, inf_str_len, inf_tab_len)
     logger.info('完成参数获取')
@@ -155,7 +155,7 @@ def main(**kwargs):
         # conn.commit()
         logger.info('结果加载完成')
 
-    tar_tables = eval(kwargs['tar_tables']) if eval(kwargs['tar_tables']) else None
+    # tar_tables = eval(kwargs['tar_tables']) if eval(kwargs['tar_tables']) else None
 
     if kwargs['tar_type'].upper() == 'MYSQL':
         from .mysql import run

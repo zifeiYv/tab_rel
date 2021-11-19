@@ -299,8 +299,8 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
                 try:
                     cr.execute(sql4 % (field_name, tab))
                     num2 = cr.fetchone()[0]
-                    cr.execute(sql5 % (tab, field_name, field_name))
-                    num3 = cr.fetchone()[0]
+                    # cr.execute(sql5 % (tab, field_name, field_name))
+                    num3 = num2
                 except:
                     logger.warning('数据库内部错误')
                     logger.warning(traceback.format_exc())
@@ -337,6 +337,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
                 bf.add(j)
             with open(f'./filters/{model_id}/{db}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
+            logger.debug(f'    {tab}.{pk} 新增完成')
         logger.debug(f'  {tab}：全部filter已保存')
     logger.info('完成')
     if multi:
@@ -403,7 +404,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
             finally:
                 conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
                 start_time = time.time()
-        for col in rel_cols_dict[tab]['psb_col']:
+        for col in rel_cols_dict[tab]['psb_pk']:
             try:
                 value = pd.read_sql(sql % (col, tab), conn)
             except:

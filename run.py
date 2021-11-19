@@ -18,7 +18,6 @@ if __name__ == '__main__':
     parser.add_argument('--cfg_user', help='存储结果的数据库的用户名')
 
     parser.add_argument('--tar_type', help='目标数据源的数据库类型')
-    parser.add_argument('--tar_tables', help='指定的需要计算的表的名称列表')
     parser.add_argument('--tar_db', help='目标数据源的数据库的名称')
     parser.add_argument('--tar_host', help='目标数据源的ip')
     parser.add_argument('--tar_passwd', help='目标数据源的密码')
@@ -37,7 +36,6 @@ if __name__ == '__main__':
     cfg_port = args.cfg_port
     cfg_user = args.cfg_user
     tar_type = args.tar_type
-    tar_tables = args.tar_tables
     tar_db = args.tar_db
     tar_host = args.tar_host
     tar_passwd = args.tar_passwd
@@ -47,5 +45,5 @@ if __name__ == '__main__':
     init_logger(model_id)
     main(model_id=model_id, notify_url=notify_url, execute_obj=execute_obj, alg_name=alg_name,
          cfg_db=cfg_db, cfg_host=cfg_host, cfg_passwd=cfg_passwd, cfg_port=cfg_port, cfg_user=cfg_user,
-         tar_type=tar_type, tar_tables=tar_tables, tar_db=tar_db, tar_host=tar_host, tar_passwd=tar_passwd,
+         tar_type=tar_type, tar_db=tar_db, tar_host=tar_host, tar_passwd=tar_passwd,
          tar_port=tar_port, tar_user=tar_user, tar_url=tar_url)

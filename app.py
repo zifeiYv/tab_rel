@@ -28,12 +28,13 @@ def find_relation():
                 "user": "root",
                 "url": "localhost:1521/orcl",  # 仅用于oracle数据库
                 },
-            "type": "mysql",
-            "tables": []  # 存储指定表进行融合
+            "type": "mysql"
         },
         "notifyUrl":"http://1121",
         "executObj": "local_db v1版本",
-        "modelId": "92ae9b17770041ae85e563cf95c9cf56"
+        "modelId": "92ae9b17770041ae85e563cf95c9cf56",
+        "modelId2": "92ae9b17770041ae85e563cf95c9cf56",  # not used
+        "modelAnilyType": "2",  # not used
     }
 
     `algorithmName`与`executObj`并不会被本算法使用，只是做了一次转存
@@ -58,10 +59,6 @@ def find_relation():
     cfg_user = config_map['user']
     # # 目标数据源的信息
     tar_type = db_info['type']
-    try:
-        tar_tables = str(db_info['tables'])
-    except KeyError:
-        tar_tables = '[]'
     tar_db = db_info['config']['db'] if db_info['config']['db'] else ''
     tar_host = db_info['config']['host']
     tar_passwd = db_info['config']['password']
@@ -85,7 +82,6 @@ def find_relation():
            '--cfg_port', cfg_port,
            '--cfg_user', cfg_user,
            '--tar_type', tar_type,
-           '--tar_tables', tar_tables,
            '--tar_db', tar_db,
            '--tar_host', tar_host,
            '--tar_passwd', tar_passwd,
