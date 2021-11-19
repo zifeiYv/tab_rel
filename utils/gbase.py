@@ -403,7 +403,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
             finally:
                 conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
                 start_time = time.time()
-        for col in rel_cols_dict[tab]:
+        for col in rel_cols_dict[tab]['psb_col']:
             try:
                 value = pd.read_sql(sql % (col, tab), conn)
             except:
