@@ -30,7 +30,11 @@ source ~/.bashrc
 
 **注意：**
 
-1. 如果在无网络环境下进行配置，在代码根目录执行`python setup.py`即可自动安装所有依赖。
+1.如果在无网络环境下进行配置，首先将全部依赖下载并解压到代码根目录. 
+
+下载地址为:链接: https://pan.baidu.com/s/1X2TMlDDVrziHxKVZ-PY1xw 提取码: t5sh 
+
+解压后的文件夹名称应为`pkgs`,然后在代码根目录执行`python setup.py`即可自动安装所有依赖。
 
 ~~如果无网络环境下进行配置环境，推荐以下两种做法：~~
 
@@ -38,7 +42,7 @@ source ~/.bashrc
 
 ~~2. 利用`pip`将待安装的包编译成whl文件，然后将全部文件拷贝至目标服务器进行安装，参考[这里](https://blog.csdn.net/SunJW_2017/article/details/103222205) 。~~
 
-2. 如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，参考文章在[这里](https://blog.csdn.net/SunJW_2017/article/details/118152349) ，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
+2.如果涉及到Oracle数据库，那么可能需要安装对应的驱动文件，参考文章在[这里](https://blog.csdn.net/SunJW_2017/article/details/118152349) ，下载地址在[这里](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html) 。
 
 # 3. 服务启动与终止
 
