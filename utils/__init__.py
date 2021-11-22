@@ -200,6 +200,14 @@ def main(**kwargs):
                      user=kwargs['tar_user'],
                      passwd=kwargs['tar_passwd'],
                      db=kwargs['tar_db'])
+    elif kwargs['tar_type'].upper() == 'SQLSERVER':
+        from .mssql import run
+        output = run(model_id, tar_tables, custom_para,
+                     host=kwargs['tar_host'],
+                     port=int(kwargs['tar_port']),
+                     user=kwargs['tar_user'],
+                     passwd=kwargs['tar_passwd'],
+                     db=kwargs['tar_db'])
     else:
         output = None
 

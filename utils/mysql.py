@@ -295,6 +295,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
                     if both_roles:
                         psb_col[field_name] = field_comment
                 elif num1 == num3:
+                    # todo 外键数量会降低,需要进一步考虑
                     psb_col[field_name] = field_comment
         rel_cols[tab] = {'comment': tab_comment,
                          'psb_col': psb_col}
