@@ -1,28 +1,34 @@
 # -*- coding: utf-8 -*-
+import re
 import os
-import logging
-from impala.dbapi import connect
-from config import multi_process, both_roles, sup_out_foreign_key
-import pandas as pd
-from pybloom import BloomFilter
-import pickle
-from utils.utils import sub_process_logger
-import multiprocessing
-import traceback
 import json
+import pickle
+import logging
+import traceback
+import multiprocessing
+
+import pandas as pd
+
+from typing import List, Tuple
+
+from sqlalchemy.engine import create_engine
+from config import multi_process, both_roles, sup_out_foreign_key
+from pybloom import BloomFilter
+from utils.utils import sub_process_logger
 from .utils import col_name_filter, col_value_filter
 
 
-def run(model_id, tar_tables=None, custom_para=None, **db_kw):
-    """根据指定的Hive数据源进行关系发现的程序的主入口。
+def run(model_id: str, tar_tables: list, custom_para: tuple, **db_kw) -> pd.DataFrame:
+    """根据指定的Hive数据源进行关系发现的程序的主入口, 本程序中使用了presto进行连接.
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        tar_tables(list): 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
-        custom_para(tuple): 用户配置的参数组成的元组
+        model_id: 当前融合任务的唯一标识
+        tar_tables: 对数据源中的哪些表进行关系发现,如果未指定,则对全部表进行查找
+        custom_para: 用户配置的参数组成的元组
         **db_kw: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -35,37 +41,34 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     else:
         processes = multi_process
         logger.info(f'使用多进程，进程数量为：{processes}')
-    host = db_kw['host']
-    port = db_kw['port']
-    user = db_kw['user']
-    password = db_kw['passwd']
-    database = db_kw['url'].split('/')[-1]
-    conn = connect(host=host, port=port, user=user, password=password, database=database,
-                   auth_mechanism='PLAIN')
-    table_and_comments = {}
+    from config import hive_ip, presto_port
+    host = hive_ip
+    port = presto_port
+    # user = db_kw['user']
+    # password = db_kw['passwd']
+    database = db_kw['db']
+
+    # 采用presto进行连接
+    engine = create_engine(f"presto://{host}:{port}/hive/{database}")
+    table_and_comments = []
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
-        with conn.cursor() as cr:
-            sql = 'show tables'
-            cr.execute(sql)
-            tables = [i[0] for i in cr.fetchall()]
+        cr = engine.execute('show tables')
+        tables = [i[0] for i in cr.fetchall()]
     else:
         logger.info('用户指定了表，将在指定表中寻找关联关系')
         tables = tar_tables
     for tab in tables:
-        with conn.cursor() as cr:
-            try:
-                sql = f'show create table {tab}'
-                cr.execute(sql)
-                res = cr.fetchall()
-                for i in res:
-                    s = i[0]
-                    if s.startswith("COMMENT"):
-                        break
-                comment = s.split("'")[1]
-            except:
-                comment = ''
-            table_and_comments[tab] = comment
+        try:
+            # 用正则表达式匹配建表语句中的表注释
+            sql = f'show create table {tab}'
+            fmt_str = engine.execute(sql).fetchone()[0]
+            pat = re.compile(r"\)\sCOMMENT(.*)\s")
+            comment = pat.search(fmt_str).groups()[0].strip()
+        except Exception as err:
+            logger.warning(err)
+            comment = ''
+        table_and_comments.append({tab: comment})
 
     if not table_and_comments:
         logger.warning('未发现可用表')
@@ -79,17 +82,19 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     return df
 
 
-def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs):
-    """执行函数。
+def execute(model_id: str, processes: int, table_and_comments: list,
+            custom_para: tuple, **kwargs) -> pd.DataFrame:
+    """执行函数
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
+        model_id: 当前融合任务的唯一标识
         processes: 进程数量
-        table_and_comments(dict): 所有待计算的表名
-        custom_para(tuple): 用户配置的参数组成的元组
+        table_and_comments: 所有待计算的表名
+        custom_para: 用户配置的参数组成的元组
         **kwargs: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -100,7 +105,10 @@ def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs)
     inf_tab_len = int(inf_tab_len)
 
     host, port, user = kwargs['host'], int(kwargs['port']), kwargs['user']
-    password, database = kwargs['passwd'], kwargs['url'].split('/')[-1]
+    password, database = kwargs['passwd'], kwargs['db']
+    from config import hive_ip, presto_port
+    host = hive_ip
+    port = presto_port
     if processes == 1:  # 单进程
         rel_cols, pks = pre_processing(model_id, table_and_comments, False, host,
                                        port, user, password, database, data_cleansing, inf_tab_len)
@@ -182,21 +190,23 @@ def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs)
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, table_and_comments, multi, host, port, user, password, database,
-                   data_cleansing=None, inf_tab_len=None):
-    """获取table的主键和可能的外键，并针对主键生成filter文件。
+def pre_processing(model_id: str, table_and_comments: List[dict], multi: bool, host: str,
+                   port: int, user: str, password: str, database: str,
+                   data_cleansing: dict, inf_tab_len: int
+                   ) -> Tuple[dict, dict]:
+    """获取table的主键和可能的外键，并针对主键生成filter文件
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        table_and_comments(dict): 表名列表
-        multi(bool): 是否采用多进程进行计算
-        host(str): 目标数据库的ip
-        port(int): 目标数据库的端口号
-        user(str): 目标数据库的用户名
-        password(str): 目标数据库的密码
-        database(str): 目标数据源的数据库名称
-        data_cleansing(dict): 包含过滤规则的字典
-        inf_tab_len(int): 表长度下界
+        model_id: 当前融合任务的唯一标识
+        table_and_comments: 表名列表
+        multi: 是否采用多进程进行计算
+        host: 目标数据库的ip
+        port: 目标数据库的端口号
+        user: 目标数据库的用户名
+        password: 目标数据库的密码
+        database: 目标数据源的数据库名称
+        data_cleansing: 包含过滤规则的字典
+        inf_tab_len: 表长度下界
 
     Returns:
         rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
@@ -212,14 +222,12 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
         logger.info(f"""
         本子进程中需要处理的表总数为{len(table_and_comments)}
         """)
-    conn = connect(host=host, port=port, user=user, password=password, database=database,
-                   auth_mechanism='PLAIN')
-    sql1 = f'select count(1) from `{database}`.`%s`'
-    sql2 = f'desc `{database}`.`%s`'
-    sql3 = f'select count(`%s`) from `{database}`.`%s`'
-    sql4 = f'select count(distinct `%s`) from `{database}`.`%s`'
-    sql5 = f'select count(1) from `{database}`.`%s` where length(`%s`)=octet_length(`%s`)'
-    cr = conn.cursor()
+    engine = create_engine(f"presto://{host}:{port}/hive/{database}")
+    sql1 = f'select count(1) from "{database}"."%s"'
+    sql2 = f'desc "{database}"."%s"'
+    sql3 = f'select count("%s") from "{database}"."%s"'
+    sql4 = f'select count(distinct "%s") from "{database}"."%s"'
+    sql5 = f'select count(1) from "{database}"."%s" where length("%s")=octet_length("%s")'
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
     length_too_long = {}  # 存储表及其长度；行数太长，可能导致内存溢出无法计算
@@ -229,12 +237,13 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
     i = 0
-    for tab in table_and_comments:
-        tab_comment = table_and_comments[tab]
+    for k in table_and_comments:
+        tab = list(k.keys())[0]
+        tab_comment = k[tab]
         logger.debug(f'进度：{i+1}/{len(table_and_comments)}')
         logger.debug(f'  {tab}：长度校验')
         try:
-            cr.execute(sql1 % tab)
+            cr = engine.execute(sql1 % tab)
             row_num = cr.fetchone()[0]
             if row_num > 1e8:
                 length_too_long[tab] = row_num
@@ -252,7 +261,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
                 continue
             else:
                 length_normal[tab] = row_num
-                logger.debug(f'  {tab}：长度合格')
+                logger.debug(f'  {tab}：长度合格({row_num}行)')
         except Exception as e:
             logger.debug(f'  {tab}：不存在：{e}')
             no_exist.append(tab)
@@ -261,7 +270,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
 
         logger.debug(f'  {tab}：查找主键')
         try:
-            cr.execute(sql2 % tab)
+            cr = engine.execute(sql2 % tab)
         except:
             logger.warning('数据库内部错误')
             logger.warning(traceback.format_exc())
@@ -273,7 +282,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
         for j in range(len(field_info)):
             field_name = field_info[j][0]
             field_type = field_info[j][1]
-            field_comment = field_info[j][2]
+            field_comment = field_info[j][3]
             if not col_name_filter(tab, field_name, data_cleansing):
                 logger.debug(f'    {field_name}不符合保留规则，被过滤')
                 continue
@@ -281,7 +290,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
             #     logger.debug(f'    {field_name}的数据类型是{field_type}，不属于要计算的数据类型{mysql_type_list}')
             #     continue
             try:
-                cr.execute(sql3 % (field_name, tab))
+                cr = engine.execute(sql3 % (field_name, tab))
             except:
                 logger.warning('数据库内部错误')
                 logger.warning(traceback.format_exc())
@@ -289,10 +298,10 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
             num1 = cr.fetchone()[0]
             if num1 == row_num:
                 try:
-                    cr.execute(sql4 % (field_name, tab))
+                    cr = engine.execute(sql4 % (field_name, tab))
                     num2 = cr.fetchone()[0]
                     try:  # 非字符型无法使用对应函数
-                        cr.execute(sql5 % (tab, field_name, field_name))
+                        cr = engine.execute(sql5 % (tab, field_name, field_name))
                         num3 = cr.fetchone()[0]
                     except:
                         num3 = num2
@@ -326,7 +335,7 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
             if os.path.exists(f'./filters/{model_id}/{database}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
-            value = pd.read_sql(f"select `{pk}` from `{tab}`", conn)
+            value = pd.read_sql(f'select "{pk}" from "{tab}"', engine)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
@@ -342,30 +351,31 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwo
         res = {'rel_cols': rel_cols, 'pks': pks}
         with open(f'./caches/{model_id}/{cache_file_name}', 'w') as f:
             json.dump(res, f)
-    cr.close()
-    conn.close()
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, host, port, user, password, database,
-             use_str_len=None, inf_dup_ratio=None, inf_str_len=None):
-    """查找关系。
+def find_rel(rel_cols: dict, pks: dict, model_id: str, multi: bool,
+             host: str, port: int, user: str, password: str, database: str,
+             use_str_len: int, inf_dup_ratio: float, inf_str_len: int
+             ) -> List[list]:
+    """查找关系
 
     Args:
-        rel_cols(dict): 一个字典，键为表名，值为该张表可能作为外键的字段列表
-        pks(dict): 一个字典，键为表名，值为该张表所有的可作为主键的字段列表
-        model_id(str): 当前融合任务的唯一标识
-        multi(bool): 是否采用多进程进行计算
-        host(str): 目标数据库的ip
-        port(int): 目标数据库的端口号
-        user(str): 目标数据库的用户名
-        password(str): 目标数据库的密码
-        database(str): 目标数据源的数据库名称
-        use_str_len(int): 以整型代替布尔值，表示是否使用字符平均长度来过滤
-        inf_dup_ratio(float): 去重后的列表长度占原列表长度的比例
-        inf_str_len(int): 将值转化为字符后的平均长度，仅当use_str_len生效时生效
+        rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
+        pks: 一个字典，键为表名，值为该张表所有的可作为主键的字段列表
+        model_id: 当前融合任务的唯一标识
+        multi: 是否采用多进程进行计算
+        host: 目标数据库的ip
+        port: 目标数据库的端口号
+        user: 目标数据库的用户名
+        password: 目标数据库的密码
+        database: 目标数据源的数据库名称
+        use_str_len: 以整型代替布尔值，表示是否使用字符平均长度来过滤
+        inf_dup_ratio: 去重后的列表长度占原列表长度的比例
+        inf_str_len: 将值转化为字符后的平均长度，仅当use_str_len生效时生效
 
     Returns:
+        结果列表
 
     """
     use_str_len = 0 if use_str_len is None else use_str_len
@@ -384,16 +394,15 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, password, databas
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select `%s` from `{database}`.`%s` limit 10000'
+    sql = f'select "%s" from "{database}"."%s" limit 10000'
     results = []
-    conn = connect(host=host, port=port, user=user, password=password, database=database,
-                   auth_mechanism='PLAIN')
+    engine = create_engine(f"presto://{host}:{port}/hive/{database}")
     logger.info('计算所有关系')
     i = 1
     for tab in rel_cols_dict:
         logger.debug(f'进度：{i}/{len(rel_cols_dict)}')
         for col in rel_cols_dict[tab]['psb_col']:
-            value = pd.read_sql(sql % (col, tab), conn)
+            value = pd.read_sql(sql % (col, tab), engine)
             df = col_value_filter(value, int(use_str_len), int(inf_str_len), float(inf_dup_ratio))
             if (isinstance(df, pd.DataFrame) and df.empty) or (df is None):
                 logger.debug(f'{tab}表的{col}字段值未通过内容校验')
@@ -425,6 +434,5 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, password, databas
         res = {'rel': results}
         with open(f'caches/{model_id}/{file_name}', 'w') as f:
             json.dump(res, f)
-    conn.close()
     logger.info('完成')
     return results

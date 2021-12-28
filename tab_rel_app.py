@@ -1,9 +1,23 @@
 # -*- coding: utf-8 -*-
+import os
+import sys
+import signal
+
 from flask import Flask, request, jsonify
 from subprocess import Popen
 
 app = Flask(__name__)
 url = '/all_tables_relation/'
+
+
+def handler(sig_num, addtion):
+    # 主进程退出后, 子进程自动终止
+    os.killpg(os.getpgid(os.getpid()), signal.SIGKILL)
+
+
+if sys.platform != 'win32':
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, handler)
 
 
 @app.route('/all_tables_relation/calculation/', methods=["POST"])
@@ -99,6 +113,4 @@ def update():
 
 
 if __name__ == '__main__':
-    # 正式环境下用以下命令启动服务
-    # gunicorn -c gunicorn_config.py app:app
     app.run('0.0.0.0', port=5002, debug=True)

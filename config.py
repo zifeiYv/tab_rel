@@ -23,9 +23,13 @@ sup_out_foreign_key = 0
 
 # 是否使用多进程加速计算，0（默认）表示关闭；1表示开启并使用os.cpu_count()个进程；
 # 如果想使用指定数量的进程，直接输入对应的数字。
-multi_process = 0
+multi_process = 1
 
 # Data type list, which contains fields could be extracted
 mysql_type_list = ['VARCHAR', 'DECIMAL', 'CHAR', 'TEXT', 'INT']  # mysql and gbase are the same
 oracle_type_list = ['VARCHAR2', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR2']
 pg_type_list = ['CHARACTER', 'TEXT']
+
+# 针对hive进行表关系查找,受限于功能限制,目前需要从配置文件对目标数据源进行配置
+hive_ip = '191.168.1.101'
+presto_port = 8881

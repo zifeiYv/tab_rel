@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
 import os
-import logging
-import cx_Oracle
-from config import multi_process, oracle_type_list, both_roles, sup_out_foreign_key
-import pandas as pd
-from pybloom import BloomFilter
-import pickle
-from utils.utils import sub_process_logger
-import multiprocessing
 import json
+import pickle
+import logging
+import multiprocessing
+
+import cx_Oracle
+import pandas as pd
+
+from typing import List, Tuple
+
+from config import multi_process, oracle_type_list, both_roles, sup_out_foreign_key
+from pybloom import BloomFilter
+from utils.utils import sub_process_logger
 from .utils import col_name_filter, col_value_filter
 
 
-def run(model_id, tar_tables=None, custom_para=None, **db_kw):
-    """根据指定的Oracle数据源进行关系发现的程序的主入口。
+def run(model_id: str, tar_tables: list, custom_para: tuple, **db_kw) -> pd.DataFrame:
+    """根据指定的Oracle数据源进行关系发现的程序的主入口
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        tar_tables(list): 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
-        custom_para(tuple): 用户配置的参数组成的元组
+        model_id: 当前融合任务的唯一标识
+        tar_tables: 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
+        custom_para: 用户配置的参数组成的元组
         **db_kw: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -40,21 +45,21 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     passwd = db_kw['passwd']
     conn = cx_Oracle.connect(user, passwd, dsn)
     schema = db_kw['db']
-    table_and_comments = {}
+    table_and_comments = []
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         with conn.cursor() as cr:
             sql = f"select table_name, comments from all_tab_comments where owner='{schema}' and table_type='TABLE'"
             cr.execute(sql)
             for i in cr.fetchall():
-                table_and_comments[i[0]] = i[1]
+                table_and_comments.append({i[0]: i[1]})
     else:
         logger.info('用户指定了表，将在指定表中寻找关联关系')
         for tab in tar_tables:
             sql = f"select comments from all_tab_comments where owner='{schema}' and table_name='{tab}'"
             with conn.cursor() as cr:
                 cr.execute(sql)
-                table_and_comments[tab] = cr.fetchone()[0]
+                table_and_comments.append({tab: cr.fetchone()[0]})
     conn.close()
 
     if not table_and_comments:
@@ -69,17 +74,19 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     return df
 
 
-def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs):
-    """执行函数。
+def execute(model_id: str, processes: int, table_and_comments: list,
+            custom_para: tuple, **kwargs) -> pd.DataFrame:
+    """执行函数
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        processes(int): 进程数量
-        table_and_comments(dict): 所有待计算的表名
-        custom_para(tuple): 用户配置的参数组成的元组
+        model_id: 当前融合任务的唯一标识
+        processes: 进程数量
+        table_and_comments: 所有待计算的表名
+        custom_para: 用户配置的参数组成的元组
         **kwargs: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -171,20 +178,22 @@ def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs)
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schema,
-                   data_cleansing=None, inf_tab_len=None):
-    """获取table的主键和可能的外键，并针对主键生成filter文件。
+def pre_processing(model_id: str, table_and_comments: List[dict], multi: bool, user: str,
+                   password: str, dsn: str, schema: str,
+                   data_cleansing: dict, inf_tab_len: int
+                   ) -> Tuple[dict, dict]:
+    """获取table的主键和可能的外键，并针对主键生成filter文件
 
     Args:
-        model_id(str): 模型的唯一标识
-        table_and_comments(dict): 表名及其注释组成的dict
-        multi(bool): 是否采用多进程进行计算
-        user(str): 目标数据库的用户名
-        passwd(str): 目标数据库的密码
-        dsn(str): 目标数据库的dsn
-        schema(str): 目标数据源的数据库名称
-        data_cleansing(dict): 包含过滤规则的字典
-        inf_tab_len(int): 表长度下界
+        model_id: 模型的唯一标识
+        table_and_comments: 表名及其注释组成的dict
+        multi: 是否采用多进程进行计算
+        user: 目标数据库的用户名
+        password: 目标数据库的密码
+        dsn: 目标数据库的dsn
+        schema: 目标数据源的数据库名称
+        data_cleansing: 包含过滤规则的字典
+        inf_tab_len: 表长度下界
 
     Returns:
         rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
@@ -200,7 +209,7 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
         logger.info(f"""
                 本子进程中需要处理的表总数为{len(table_and_comments)}
                 """)
-    conn = cx_Oracle.connect(user, passwd, dsn)
+    conn = cx_Oracle.connect(user, password, dsn)
 
     sql1 = f'select count(1) from {schema}."%s"'
     sql2 = f"select a.column_name, a.data_type, b.comments from all_tab_columns a, all_col_comments b " \
@@ -208,7 +217,6 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
            f"a.column_name=b.column_name"
     sql3 = f'select count("%s") from {schema}."%s"'
     sql4 = f'select count(distinct "%s") from {schema}."%s"'
-    sql5 = f'select count(1) from {schema}."%s" where length("%s")=lengthb("%s")'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -219,8 +227,9 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
     i = 0
-    for tab in table_and_comments:
-        tab_comment = table_and_comments[tab]
+    for k in table_and_comments:
+        tab = list(k.keys())[0]
+        tab_comment = k[tab]
         logger.debug(f'进度:{i+1}/{len(table_and_comments)}')
         logger.debug(f'  {tab}：长度校验')
         try:
@@ -318,24 +327,27 @@ def pre_processing(model_id, table_and_comments, multi, user, passwd, dsn, schem
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
-             use_str_len=None, inf_dup_ratio=None, inf_str_len=None):
-    """查找关系。
+def find_rel(rel_cols: dict, pks: dict, model_id: str, multi: bool,
+             user: str, password: str, dsn: str, schema: str,
+             use_str_len: str, inf_dup_ratio: float, inf_str_len: int
+             ) -> List[list]:
+    """查找关系
 
     Args:
-        rel_cols(dict): 一个字典，键为表名，值为该张表可能作为外键的字段列表
-        pks(dict):
-        user(str):
-        passwd(str):
-        model_id(str):
-        dsn(str):
-        multi(bool):
-        schema(str):
-        use_str_len(int): 以整型代替布尔值，表示是否使用字符平均长度来过滤
-        inf_dup_ratio(float): 去重后的列表长度占原列表长度的比例
-        inf_str_len(int): 将值转化为字符后的平均长度，仅当use_str_len生效时生效
+        rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
+        pks: 一个字典，键为表名，值为该张表所有的可作为主键的字段列表
+        user: 用户名
+        password: 密码
+        model_id: 当前融合任务的唯一标识
+        dsn: 目标数据库的dsn
+        multi: 是否采用多进程进行计算
+        schema: 目标数据源的schema
+        use_str_len: 以整型代替布尔值，表示是否使用字符平均长度来过滤
+        inf_dup_ratio: 去重后的列表长度占原列表长度的比例
+        inf_str_len: 将值转化为字符后的平均长度，仅当use_str_len生效时生效
 
     Returns:
+        结果列表
 
     """
     use_str_len = 0 if use_str_len is None else use_str_len
@@ -347,7 +359,7 @@ def find_rel(rel_cols, pks, model_id, multi, user, passwd, dsn, schema,
     else:
         logger = sub_process_logger(model_id, multiprocessing.current_process().name)
         logger.info(f"""本子进程中需要处理的表总数为{len(rel_cols)}""")
-    conn = cx_Oracle.connect(user, passwd, dsn)
+    conn = cx_Oracle.connect(user, password, dsn)
     rel_cols_dict = {}
     if isinstance(rel_cols, list):
         for i in rel_cols:

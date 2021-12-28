@@ -1,30 +1,34 @@
 # -*- coding: utf-8 -*-
 import os
-import logging
 import time
+import json
+import pickle
+import logging
+import traceback
+import multiprocessing
+
+import pandas as pd
+
+from typing import List
 
 from GBaseConnector import connect
 from config import multi_process, mysql_type_list, both_roles, sup_out_foreign_key
-import pandas as pd
 from pybloom import BloomFilter
-import pickle
 from utils.utils import sub_process_logger
-import multiprocessing
-import traceback
-import json
 from .utils import col_name_filter, col_value_filter
 
 
-def run(model_id, tar_tables=None, custom_para=None, **db_kw):
-    """根据指定的MySQL数据源进行关系发现的程序的主入口。
+def run(model_id: str, tar_tables: list, custom_para: tuple, **db_kw) -> pd.DataFrame:
+    """根据指定的MySQL数据源进行关系发现的程序的主入口
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        tar_tables(list): 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
-        custom_para(tuple): 用户配置的参数组成的元组
+        model_id: 当前融合任务的唯一标识
+        tar_tables: 对数据源中的哪些表进行关系发现，如果未指定，则对全部表进行查找
+        custom_para: 用户配置的参数组成的元组
         **db_kw: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -38,7 +42,6 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
         processes = multi_process
         logger.info(f'使用多进程，进程数量为：{processes}')
 
-    # todo
     if multi_process > 0:
         logger.warning(f'GBase 8a 免费版会限制最大连接数，为保证正常运行，不允许使用多进程')
         processes = 1
@@ -49,14 +52,14 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     db = db_kw['db']
     cr = conn.cursor()
 
-    table_and_comments = {}
+    table_and_comments = []
     if not tar_tables:
         logger.info('用户未指定表，将读取目标库中的全表进行计算')
         sql = f"select table_name, table_comment from information_schema.tables where table_schema='{db}' " \
               f"and table_type='BASE TABLE'"
         cr.execute(sql)
         for i in cr.fetchall():
-            table_and_comments[i[0]] = i[1]
+            table_and_comments.append({i[0]: i[1]})
     else:
         logger.info('用户指定了表，将在指定表中寻找关联关系')
         for tab in tar_tables:
@@ -78,17 +81,19 @@ def run(model_id, tar_tables=None, custom_para=None, **db_kw):
     return df
 
 
-def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs):
-    """执行函数。
+def execute(model_id: str, processes: int, table_and_comments: list,
+            custom_para: tuple, **kwargs) -> pd.DataFrame:
+    """执行函数
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        processes(int): 进程数量
-        table_and_comments(dict): 所有待计算的表名
-        custom_para(tuple): 用户配置的参数组成的元组
+        model_id: 当前融合任务的唯一标识
+        processes: 进程数量
+        table_and_comments: 所有待计算的表名
+        custom_para: 用户配置的参数组成的元组
         **kwargs: 目标数据源的相关参数
 
     Returns:
+        A pd.DataFrame, which represents the results.
 
     """
     logger = logging.getLogger(f'{model_id}')
@@ -181,21 +186,22 @@ def execute(model_id, processes, table_and_comments, custom_para=None, **kwargs)
         return pd.DataFrame(columns=columns, data=[])
 
 
-def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd, db,
-                   data_cleansing=None, inf_tab_len=None):
-    """获取table的主键和可能的外键，并针对主键生成filter文件。
+def pre_processing(model_id: str, table_and_comments: List[dict], multi: bool, host: str,
+                   port: int, user: str, password: str, database: str,
+                   data_cleansing: dict, inf_tab_len: int):
+    """获取table的主键和可能的外键，并针对主键生成filter文件
 
     Args:
-        model_id(str): 当前融合任务的唯一标识
-        table_and_comments(dict): 表名及注释
-        multi(bool): 是否采用多进程进行计算
-        host(str): 目标数据库的ip
-        port(int): 目标数据库的端口号
-        user(str): 目标数据库的用户名
-        passwd(str): 目标数据库的密码
-        db(str): 目标数据源的数据库名称
-        data_cleansing(dict): 包含过滤规则的字典
-        inf_tab_len(int): 表长度下界
+        model_id: 当前融合任务的唯一标识
+        table_and_comments: 表名及注释
+        multi: 是否采用多进程进行计算
+        host: 目标数据库的ip
+        port: 目标数据库的端口号
+        user: 目标数据库的用户名
+        password: 目标数据库的密码
+        database: 目标数据源的数据库名称
+        data_cleansing: 包含过滤规则的字典
+        inf_tab_len: 表长度下界
 
     Returns:
         rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
@@ -211,15 +217,14 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
         logger.info(f"""
         本子进程中需要处理的表总数为{len(table_and_comments)}
         """)
-    conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    conn = connect(host=host, port=port, user=user, passwd=password, db=database)
     start_time = time.time()
 
-    sql1 = f'select count(1) from `{db}`.`%s`'
+    sql1 = f'select count(1) from `{database}`.`%s`'
     sql2 = f'select column_name, data_type, column_comment from information_schema.columns where ' \
-           f"table_schema='{db}' and table_name='%s'"
-    sql3 = f'select count(`%s`) from `{db}`.`%s`'
-    sql4 = f'select count(distinct `%s`) from `{db}`.`%s`'
-    sql5 = f'select count(1) from `{db}`.`%s` where length(`%s`)=char_length(`%s`)'
+           f"table_schema='{database}' and table_name='%s'"
+    sql3 = f'select count(`%s`) from `{database}`.`%s`'
+    sql4 = f'select count(distinct `%s`) from `{database}`.`%s`'
     cr = conn.cursor()
     rel_cols = {}  # 存储表及其可能与其他表主键进行关联的字段
     length_normal = {}  # 存储表及其长度
@@ -230,16 +235,17 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
     no_exist = []  # 数据库中不存在的表
     logger.info('预处理所有表')
     i = 0
-    for tab in table_and_comments:
+    for k in table_and_comments:
         if time.time() - start_time >= 3600 * 2:  # 距离初始连接超过两个小时，则强制关闭并重新连接
             try:
                 cr.close()
                 conn.close()
             finally:
-                conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+                conn = connect(host=host, port=port, user=user, passwd=password, db=database)
                 start_time = time.time()
                 cr = conn.cursor()
-        tab_comment = table_and_comments[tab]
+        tab = list(k.keys())[0]
+        tab_comment = k[tab]
         logger.debug(f'进度：{i+1}/{len(table_and_comments)}')
         logger.debug(f'  {tab}：长度校验')
         try:
@@ -324,19 +330,19 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
             continue
 
         logger.debug(f'  {tab}：正在生成filter文件')
-        if not os.path.exists(f'./filters/{model_id}/{db}'):
-            os.makedirs(f'./filters/{model_id}/{db}')
+        if not os.path.exists(f'./filters/{model_id}/{database}'):
+            os.makedirs(f'./filters/{model_id}/{database}')
         capacity = int(length_normal[tab] * 1.2)
         for pk in pks[tab]['psb_pk']:
             filter_name = tab + '@' + pk + '.filter'
-            if os.path.exists(f'./filters/{model_id}/{db}/{filter_name}'):
+            if os.path.exists(f'./filters/{model_id}/{database}/{filter_name}'):
                 logger.debug(f'    {tab}.{pk} 已经存在')
                 continue
             value = pd.read_sql(f"select {pk} from {tab}", conn)
             bf = BloomFilter(capacity)
             for j in value.iloc[:, 0]:
                 bf.add(j)
-            with open(f'./filters/{model_id}/{db}/{filter_name}', 'wb') as f:
+            with open(f'./filters/{model_id}/{database}/{filter_name}', 'wb') as f:
                 pickle.dump(bf, f)
             logger.debug(f'    {tab}.{pk} 新增完成')
         logger.debug(f'  {tab}：全部filter已保存')
@@ -353,25 +359,28 @@ def pre_processing(model_id, table_and_comments, multi, host, port, user, passwd
     return rel_cols, pks
 
 
-def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
-             use_str_len=None, inf_dup_ratio=None, inf_str_len=None):
-    """查找关系。
+def find_rel(rel_cols: dict, pks: dict, model_id: str, multi: bool,
+             host: str, port: int, user: str, password: str, database: str,
+             use_str_len: int, inf_dup_ratio: float, inf_str_len: int
+             ) -> List[list]:
+    """查找关系
 
     Args:
-        rel_cols(dict): 一个字典，键为表名，值为该张表可能作为外键的字段列表
-        pks(dict): 一个字典，键为表名，值为该张表所有的可作为主键的字段列表
-        model_id(str): 当前融合任务的唯一标识
-        multi(bool): 是否采用多进程进行计算
-        host(str): 目标数据库的ip
-        port(int): 目标数据库的端口号
-        user(str): 目标数据库的用户名
-        passwd(str): 目标数据库的密码
-        db(str): 目标数据源的数据库名称
-        use_str_len(int): 以整型代替布尔值，表示是否使用字符平均长度来过滤
-        inf_dup_ratio(float): 去重后的列表长度占原列表长度的比例
-        inf_str_len(int): 将值转化为字符后的平均长度，仅当use_str_len生效时生效
+        rel_cols: 一个字典，键为表名，值为该张表可能作为外键的字段列表
+        pks: 一个字典，键为表名，值为该张表所有的可作为主键的字段列表
+        model_id: 当前融合任务的唯一标识
+        multi: 是否采用多进程进行计算
+        host: 目标数据库的ip
+        port: 目标数据库的端口号
+        user: 目标数据库的用户名
+        password: 目标数据库的密码
+        database: 目标数据源的数据库名称
+        use_str_len: 以整型代替布尔值，表示是否使用字符平均长度来过滤
+        inf_dup_ratio: 去重后的列表长度占原列表长度的比例
+        inf_str_len: 将值转化为字符后的平均长度，仅当use_str_len生效时生效
 
     Returns:
+        结果列表
 
     """
     use_str_len = 0 if use_str_len is None else use_str_len
@@ -390,9 +399,9 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
     else:
         rel_cols_dict = rel_cols
 
-    sql = f'select `%s` from `{db}`.`%s` limit 10000'
+    sql = f'select `%s` from `{database}`.`%s` limit 10000'
     results = []
-    conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+    conn = connect(host=host, port=port, user=user, passwd=password, db=database)
     start_time = time.time()
 
     logger.info('计算所有关系')
@@ -403,7 +412,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
             try:
                 conn.close()
             finally:
-                conn = connect(host=host, port=port, user=user, passwd=passwd, db=db)
+                conn = connect(host=host, port=port, user=user, passwd=password, db=database)
                 start_time = time.time()
         for col in rel_cols_dict[tab]['psb_col']:
             try:
@@ -419,7 +428,7 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
                 if pk_tab == tab:
                     continue
                 for pk in pks[pk_tab]['psb_pk']:
-                    with open(f'./filters/{model_id}/{db}/{pk_tab}@{pk}.filter', 'rb') as f:
+                    with open(f'./filters/{model_id}/{database}/{pk_tab}@{pk}.filter', 'rb') as f:
                         bf = pickle.load(f)
                     flag = 1
                     num_not_in_bf = 0
@@ -431,8 +440,8 @@ def find_rel(rel_cols, pks, model_id, multi, host, port, user, passwd, db,
                             break
                     if flag:
                         not_match_ratio = num_not_in_bf / 10000
-                        res = [model_id, db, pk_tab, pks[pk_tab]['comment'], pk, pks[pk_tab]['psb_pk'][pk],
-                               model_id, db,
+                        res = [model_id, database, pk_tab, pks[pk_tab]['comment'], pk, pks[pk_tab]['psb_pk'][pk],
+                               model_id, database,
                                tab, rel_cols_dict[tab]['comment'], col, rel_cols_dict[tab]['psb_col'][col],
                                not_match_ratio]
                         results.append(res)

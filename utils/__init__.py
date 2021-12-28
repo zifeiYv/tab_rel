@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import logging
+import time
 import traceback
 import requests
 
-from .utils import save_to_db, col_value_filter, col_name_filter
-import logging
-import time
 import pymysql
+
+from .utils import save_to_db, col_value_filter, col_name_filter
 
 
 def main(**kwargs):
@@ -30,7 +31,7 @@ def main(**kwargs):
     cfg_passwd: {kwargs['cfg_passwd']},
     cfg_port: {kwargs['cfg_port']},
     cfg_user: {kwargs['cfg_user']},
-    
+
     tar_type: {kwargs['tar_type']},
     tar_db: {kwargs['tar_db']},
     tar_host: {kwargs['tar_host']},
@@ -38,7 +39,7 @@ def main(**kwargs):
     tar_port: {kwargs['tar_port']},
     tar_user: {kwargs['tar_user']},
     tar_url: {kwargs['tar_url']},
-    
+
     notify_url: {kwargs['notify_url']}
     """)
     logger.info('初始化状态表...')
@@ -166,7 +167,7 @@ def main(**kwargs):
                      passwd=kwargs['tar_passwd'],
                      db=kwargs['tar_db'])
     elif kwargs['tar_type'].upper() == 'GBASE':
-        from.gbase import run
+        from .gbase import run
         output = run(model_id, tar_tables, custom_para,
                      host=kwargs['tar_host'],
                      port=int(kwargs['tar_port']),
@@ -190,7 +191,8 @@ def main(**kwargs):
                      port=int(kwargs['tar_port']),
                      user=kwargs['tar_user'],
                      passwd=kwargs['tar_passwd'],
-                     url=kwargs['tar_url']
+                     url=kwargs['tar_url'],
+                     db=kwargs['tar_db']
                      )
     elif kwargs['tar_type'].upper() == 'POSTGRESQL':
         from .pg import run

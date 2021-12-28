@@ -17,11 +17,11 @@ def init_logger(model_id):
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)
     handler0 = RotatingFileHandler(log_dir + '/' + logger_name + '-debug.log', maxBytes=10 * 1024 * 1024,
-                                   backupCount=5)
+                                   backupCount=5, encoding='utf-8')
     handler1 = RotatingFileHandler(log_dir + '/' + logger_name + '-info.log', maxBytes=10 * 1024 * 1024,
-                                   backupCount=5)
+                                   backupCount=5, encoding='utf-8')
     handler2 = RotatingFileHandler(log_dir + '/' + logger_name + '-warn.log', maxBytes=10 * 1024 * 1024,
-                                   backupCount=5)
+                                   backupCount=5, encoding='utf-8')
     handler0.setLevel(logging.DEBUG)
     handler1.setLevel(logging.INFO)
     handler2.setLevel(logging.WARNING)
@@ -179,9 +179,9 @@ def sub_process_logger(model_id, process_name):
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)
     handler0 = RotatingFileHandler(log_dir + '/' + logger_name + '-debug.log', maxBytes=10 * 1024 * 1024,
-                                   backupCount=5)
+                                   backupCount=5, encoding='utf-8')
     handler1 = RotatingFileHandler(log_dir + '/' + logger_name + '-warn.log', maxBytes=10 * 1024 * 1024,
-                                   backupCount=5)
+                                   backupCount=5, encoding='utf-8')
     handler0.setFormatter(formatter)
     handler1.setLevel(logging.WARNING)
     handler1.setFormatter(formatter)
